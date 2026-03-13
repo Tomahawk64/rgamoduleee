@@ -1,0 +1,217 @@
+import 'dart:async';
+
+import '../models/consultation_session.dart';
+import '../models/pandit_model.dart';
+
+// ── Session Repository ────────────────────────────────────────────────────────
+//
+// WebSocket-ready interface for consultation session management.
+//
+// PRODUCTION MIGRATION:
+//   1. Add `web_socket_channel` to pubspec.yaml
+//   2. Implement `WsSessionRepository` using `WebSocketChannel`
+//   3. Replace `MockSessionRepository` in the provider with `WsSessionRepository`
+//   4. All controllers/screens need ZERO changes — they only reference this interface.
+//
+// WebSocket message protocol (JSON):
+//   Client → Server:
+//     { "type": "send_message",  "text": "...", "session_id": "..." }
+//     { "type": "extend_session","minutes": 10, "session_id": "..." }
+//     { "type": "end_session",   "session_id": "..." }
+//   Server → Client:
+//     { "type": "session_started",  "session_id": "..." }
+//     { "type": "pandit_message",   "text": "...", "sender_id": "...", ... }
+//     { "type": "typing",           "is_typing": true }
+//     { "type": "time_update",      "remaining_seconds": 540 }
+//     { "type": "session_extended", "added_seconds": 600 }
+//     { "type": "session_ended",    "reason": "time_expired" }
+//
+
+/// Abstract repository — the only contract controllers depend on.
+abstract class ISessionRepository {
+  /// Creates the consultation row in DB and returns a ready [ConsultationSession].
+  /// Must be called before [connect].
+  Future<ConsultationSession> startSession({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+  });
+
+  /// Returns a broadcast stream of [SessionEvent]s for the given session.
+  /// In production: establishes and returns a WebSocket channel stream.
+  Stream<SessionEvent> connect(ConsultationSession session);
+
+  /// Send a chat message from the user.
+  Future<void> sendMessage(String sessionId, String text, String senderId);
+
+  /// Request session extension (adds [addMinutes] minutes, triggers payment).
+  /// Returns the new canonical [duration_minutes] as confirmed by the server.
+  Future<int> extendSession(String sessionId, int addMinutes);
+
+  /// Gracefully terminate the session.
+  Future<void> endSession(String sessionId);
+
+  /// Fetch live server state for a session: {consumed_minutes, duration_minutes, status}.
+  /// Returns null if the session row does not exist.
+  /// Used to re-sync the local countdown after the app was backgrounded.
+  Future<Map<String, dynamic>?> fetchSessionStatus(String sessionId);
+
+  /// Dispose all resources for [sessionId].
+  void dispose(String sessionId);
+}
+
+/// Abstract repository for pandit data.
+abstract class IPanditRepository {
+  Future<List<PanditModel>> fetchOnlinePandits();
+  Future<PanditModel?> fetchPandit(String panditId);
+}
+
+// ── Mock Implementations ──────────────────────────────────────────────────────
+
+/// Simulates WebSocket session events for development and UI preview.
+/// Swap with `WsSessionRepository` to go live.
+class MockSessionRepository implements ISessionRepository {
+  final Map<String, StreamController<SessionEvent>> _controllers = {};
+
+  @override
+  Future<ConsultationSession> startSession({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    return ConsultationSession.create(
+      pandit: pandit,
+      rate: rate,
+      userId: userId,
+      userName: userName,
+    );
+  }
+
+  @override
+  Stream<SessionEvent> connect(ConsultationSession session) {
+    final ctrl = StreamController<SessionEvent>.broadcast();
+    _controllers[session.id] = ctrl;
+
+    // Simulate server handshake after 800ms
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (ctrl.isClosed) return;
+      ctrl.add(SessionStartedEvent(sessionId: session.id));
+
+      // Pandit sends a welcome message after 1.5s
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (ctrl.isClosed) return;
+        ctrl.add(TypingEvent(isTyping: true));
+
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          if (ctrl.isClosed) return;
+          ctrl.add(TypingEvent(isTyping: false));
+          ctrl.add(PanditMessageEvent(
+            message: ChatMessage(
+              sessionId: session.id,
+              senderId: session.pandit.id,
+              senderName: session.pandit.name,
+              text:
+                  'Namaste 🙏 I am ${session.pandit.name}. How may I help you today?',
+              isFromPandit: true,
+            ),
+          ));
+        });
+      });
+    });
+
+    return ctrl.stream;
+  }
+
+  @override
+  Future<void> sendMessage(
+      String sessionId, String text, String senderId) async {
+    final ctrl = _controllers[sessionId];
+    if (ctrl == null || ctrl.isClosed) return;
+
+    // Simulate pandit reading and replying after a short delay
+    await Future.delayed(const Duration(milliseconds: 300));
+    ctrl.add(TypingEvent(isTyping: true));
+
+    await Future.delayed(
+        Duration(milliseconds: 1500 + (text.length * 20).clamp(0, 3000)));
+
+    if (ctrl.isClosed) return;
+    ctrl.add(TypingEvent(isTyping: false));
+
+    final replies = [
+      'I understand. Based on your query, I can see that...',
+      'That is a very relevant question. Let me explain from a Vedic perspective...',
+      'According to your kundali, this is an auspicious period for ...',
+      'You should perform a Ganesh puja before proceeding.',
+      'The planetary alignments suggest caution in the coming weeks.',
+      'From a Vastu standpoint, the north-east direction needs attention.',
+    ];
+    replies.shuffle();
+
+    ctrl.add(PanditMessageEvent(
+      message: ChatMessage(
+        sessionId: sessionId,
+        senderId: 'pandit',
+        senderName: 'Pandit',
+        text: replies.first,
+        isFromPandit: true,
+      ),
+    ));
+  }
+
+  @override
+  Future<int> extendSession(String sessionId, int addMinutes) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    final ctrl = _controllers[sessionId];
+    if (ctrl != null && !ctrl.isClosed) {
+      ctrl.add(SessionExtendedEvent(addedSeconds: addMinutes * 60));
+    }
+    // Mock returns a plausible new total (base 15 min + all extensions).
+    return 15 + addMinutes;
+  }
+
+  @override
+  Future<void> endSession(String sessionId) async {
+    final ctrl = _controllers[sessionId];
+    if (ctrl == null || ctrl.isClosed) return;
+    ctrl.add(const SessionEndedEvent(reason: 'user_ended'));
+    await Future.delayed(const Duration(milliseconds: 200));
+    dispose(sessionId);
+  }
+
+  /// Mock always returns "session is active with 0 consumed minutes" —
+  /// the real implementation queries the consultations table.
+  @override
+  Future<Map<String, dynamic>?> fetchSessionStatus(String sessionId) async {
+    return const {'status': 'active', 'consumed_minutes': 0, 'duration_minutes': 15};
+  }
+
+  @override
+  void dispose(String sessionId) {
+    _controllers[sessionId]?.close();
+    _controllers.remove(sessionId);
+  }
+}
+
+/// Returns the mock pandit list. Swap with Supabase query in production:
+///   `await supabase.from('pandit_profiles').select().eq('is_online', true)`
+class MockPanditRepository implements IPanditRepository {
+  @override
+  Future<List<PanditModel>> fetchOnlinePandits() async {
+    await Future.delayed(const Duration(milliseconds: 400));
+    return kMockPandits;
+  }
+
+  @override
+  Future<PanditModel?> fetchPandit(String panditId) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    try {
+      return kMockPandits.firstWhere((p) => p.id == panditId);
+    } catch (_) {
+      return null;
+    }
+  }
+}

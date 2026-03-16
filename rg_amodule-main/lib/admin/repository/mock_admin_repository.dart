@@ -106,17 +106,7 @@ class MockAdminRepository implements IAdminRepository {
     await _delay();
     final idx = _bookings.indexWhere((b) => b.id == id);
     if (idx != -1) {
-      _bookings[idx] = AdminBookingRow(
-        id: _bookings[idx].id,
-        packageTitle: _bookings[idx].packageTitle,
-        clientName: _bookings[idx].clientName,
-        panditName: _bookings[idx].panditName,
-        status: status,
-        amount: _bookings[idx].amount,
-        isPaid: _bookings[idx].isPaid,
-        isOnline: _bookings[idx].isOnline,
-        scheduledAt: _bookings[idx].scheduledAt,
-      );
+      _bookings[idx] = _bookings[idx].copyWith(status: status);
     }
     return _bookings[idx];
   }
@@ -179,18 +169,25 @@ class MockAdminRepository implements IAdminRepository {
     if (idx != -1) {
       final pandit =
           _pandits.firstWhere((p) => p.id == panditId, orElse: () => _pandits.first);
-      _bookings[idx] = AdminBookingRow(
-        id: _bookings[idx].id,
-        packageTitle: _bookings[idx].packageTitle,
-        clientName: _bookings[idx].clientName,
+      _bookings[idx] = _bookings[idx].copyWith(
         panditName: pandit.name,
-        status: _bookings[idx].status,
-        amount: _bookings[idx].amount,
-        isPaid: _bookings[idx].isPaid,
-        isOnline: _bookings[idx].isOnline,
-        scheduledAt: _bookings[idx].scheduledAt,
         panditId: panditId,
+        status: _bookings[idx].status == BookingStatus.pending
+            ? BookingStatus.confirmed
+            : _bookings[idx].status,
       );
+      return _bookings[idx];
+    }
+    throw Exception('Booking not found');
+  }
+
+  // ── Mark as Paid ────────────────────────────────────────────────────────────
+  @override
+  Future<AdminBookingRow> markAsPaid(String bookingId) async {
+    await _delay();
+    final idx = _bookings.indexWhere((b) => b.id == bookingId);
+    if (idx != -1) {
+      _bookings[idx] = _bookings[idx].copyWith(isPaid: true);
       return _bookings[idx];
     }
     throw Exception('Booking not found');
@@ -451,6 +448,10 @@ final List<AdminBookingRow> _seedBookings = [
     isPaid: true,
     isOnline: false,
     scheduledAt: _now.add(const Duration(days: 7)),
+    clientPhone: '+91 98765 43211',
+    clientEmail: 'rajesh.kumar@example.com',
+    timeSlot: '10:00 AM – 12:00 PM',
+    address: '12, Shanti Nagar, Bhopal, MP – 462001',
   ),
   AdminBookingRow(
     id: 'dddd0002-0002-4002-8002-000000000002',
@@ -462,6 +463,10 @@ final List<AdminBookingRow> _seedBookings = [
     isPaid: true,
     isOnline: true,
     scheduledAt: _now.subtract(const Duration(days: 5)),
+    clientPhone: '+91 98765 43211',
+    clientEmail: 'rajesh.kumar@example.com',
+    timeSlot: '9:00 AM – 10:30 AM',
+    address: 'Online (Zoom)',
   ),
   AdminBookingRow(
     id: 'dddd0003-0003-4003-8003-000000000003',
@@ -473,17 +478,26 @@ final List<AdminBookingRow> _seedBookings = [
     isPaid: true,
     isOnline: false,
     scheduledAt: _now.add(const Duration(days: 3)),
+    clientPhone: '+91 98765 43211',
+    clientEmail: 'rajesh.kumar@example.com',
+    timeSlot: '8:00 AM – 11:00 AM',
+    address: 'Plot 45, Arera Colony, Bhopal, MP – 462016',
   ),
   AdminBookingRow(
     id: 'bk_demo_004',
     packageTitle: 'Sunderkand Path',
     clientName: 'Priya Sharma',
-    panditName: 'Acharya Deepak Joshi',
+    panditName: null,
     status: BookingStatus.pending,
     amount: 799,
     isPaid: false,
     isOnline: true,
     scheduledAt: _now.add(const Duration(days: 10)),
+    clientPhone: '+91 87654 32109',
+    clientEmail: 'priya.sharma@example.com',
+    timeSlot: '7:00 AM – 8:30 AM',
+    address: 'Online (Google Meet)',
+    userNotes: 'Please arrange for Prasad delivery if possible.',
   ),
   AdminBookingRow(
     id: 'bk_demo_005',
@@ -495,6 +509,26 @@ final List<AdminBookingRow> _seedBookings = [
     isPaid: true,
     isOnline: false,
     scheduledAt: _now.add(const Duration(days: 14)),
+    clientPhone: '+91 76543 21098',
+    clientEmail: 'amit.patel@example.com',
+    timeSlot: '11:00 AM – 1:00 PM',
+    address: 'B-7, Vastrapur, Ahmedabad, GJ – 380015',
+  ),
+  AdminBookingRow(
+    id: 'bk_demo_006',
+    packageTitle: 'Navgraha Shanti Puja',
+    clientName: 'Sunita Rao',
+    panditName: null,
+    status: BookingStatus.pending,
+    amount: 2499,
+    isPaid: false,
+    isOnline: false,
+    scheduledAt: _now.add(const Duration(days: 5)),
+    clientPhone: '+91 99887 76655',
+    clientEmail: 'sunita.rao@example.com',
+    timeSlot: '6:00 AM – 8:00 AM',
+    address: '101, Srinivasa Nagar, Hyderabad, TS – 500038',
+    userNotes: 'Husband will also be present. Two people total.',
   ),
 ];
 

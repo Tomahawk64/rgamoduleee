@@ -1,13 +1,18 @@
 // lib/account/screens/edit_profile_screen.dart
 // Allows the authenticated user to update their display name and phone number.
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../auth/providers/auth_provider.dart';
 import '../../core/providers/supabase_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../models/role_enum.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -18,10 +23,17 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
+  static const _profileImageBucket = 'profile-images';
+
   final _formKey = GlobalKey<FormState>();
+  final _picker = ImagePicker();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _phoneCtrl;
+  Uint8List? _avatarBytes;
+  String? _avatarExt;
+  String? _avatarUrl;
   bool _saving = false;
+  bool _uploadingImage = false;
 
   @override
   void initState() {
@@ -29,6 +41,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final user = ref.read(currentUserProvider);
     _nameCtrl = TextEditingController(text: user?.name ?? '');
     _phoneCtrl = TextEditingController(text: user?.phone ?? '');
+    _avatarUrl = user?.avatarUrl;
   }
 
   @override
@@ -40,6 +53,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final currentUser = ref.read(currentUserProvider);
+    final avatarRequired = currentUser?.role == UserRole.pandit;
+    if (avatarRequired && _avatarBytes == null && (_avatarUrl ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pandit profile photo is required before saving.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
 
     try {
@@ -47,11 +72,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       final uid = client.auth.currentUser?.id;
       if (uid == null) throw Exception('Not authenticated');
 
+      final uploadedAvatarUrl = await _uploadAvatarIfNeeded(client, uid);
+
       await client.from('profiles').update({
         'full_name': _nameCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim().isEmpty
             ? null
             : _phoneCtrl.text.trim(),
+        'avatar_url': uploadedAvatarUrl,
       }).eq('id', uid);
 
       // Refresh auth state so the app-wide user model updates
@@ -85,8 +113,63 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
   }
 
+  Future<void> _pickAvatar() async {
+    final picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1200,
+    );
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+    final ext = path.extension(picked.name).replaceFirst('.', '').toLowerCase();
+    if (!mounted) return;
+
+    setState(() {
+      _avatarBytes = bytes;
+      _avatarExt = ext.isEmpty ? 'jpg' : ext;
+    });
+  }
+
+  Future<String?> _uploadAvatarIfNeeded(SupabaseClient client, String uid) async {
+    if (_avatarBytes == null) return _avatarUrl;
+
+    setState(() => _uploadingImage = true);
+    try {
+      final ext = (_avatarExt == null || _avatarExt!.isEmpty) ? 'jpg' : _avatarExt!;
+      final objectPath = '$uid/avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await client.storage.from(_profileImageBucket).uploadBinary(
+            objectPath,
+            _avatarBytes!,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: _contentTypeForExt(ext),
+            ),
+          );
+      final publicUrl = client.storage.from(_profileImageBucket).getPublicUrl(objectPath);
+      setState(() => _avatarUrl = publicUrl);
+      return publicUrl;
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  String _contentTypeForExt(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(currentUserProvider);
+    final avatarRequired = user?.role == UserRole.pandit;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -102,14 +185,45 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
           children: [
-            // Avatar placeholder
+            // Avatar
             Center(
-              child: CircleAvatar(
-                radius: 40,
-                backgroundColor:
-                    AppColors.primary.withValues(alpha: 0.1),
-                child: const Icon(Icons.person,
-                    size: 44, color: AppColors.primary),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 44,
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                    backgroundImage: _avatarBytes != null
+                        ? MemoryImage(_avatarBytes!)
+                        : (_avatarUrl != null && _avatarUrl!.isNotEmpty
+                            ? NetworkImage(_avatarUrl!)
+                            : null) as ImageProvider<Object>?,
+                    child: _avatarBytes == null && (_avatarUrl == null || _avatarUrl!.isEmpty)
+                        ? const Icon(Icons.person, size: 48, color: AppColors.primary)
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _saving || _uploadingImage ? null : _pickAvatar,
+                    icon: _uploadingImage
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.image_outlined),
+                    label: Text(avatarRequired ? 'Upload Profile Photo *' : 'Upload Profile Photo'),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    avatarRequired
+                        ? 'Profile photo is required for pandit accounts.'
+                        : 'Profile photo is optional for user accounts.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 32),

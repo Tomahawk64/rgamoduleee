@@ -5,8 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../../auth/providers/auth_provider.dart';
+import '../../auth/models/user_model.dart';
+import '../../booking/providers/booking_provider.dart';
+import '../../booking/repository/booking_repository.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../models/role_enum.dart';
+import '../../payment/payment_provider.dart';
+import '../../payment/payment_service.dart';
 import '../models/special_pooja_model.dart';
 import '../providers/special_poojas_provider.dart';
 
@@ -182,8 +189,8 @@ class _SpecialPoojaDetailScreenState
                       _Divider(),
                       _QuickStat(
                         icon: Icons.location_on,
-                        label: pooja.location?.city ?? 'Online',
-                        sublabel: 'Location',
+                        label: 'Online',
+                        sublabel: 'Streaming',
                         color: Colors.green,
                       ),
                     ],
@@ -317,6 +324,37 @@ class _SpecialPoojaDetailScreenState
                     ),
                   ),
 
+                _Section(
+                  title: 'How Online Pooja Works',
+                  child: const Column(
+                    children: [
+                      _ProcessStep(
+                        number: '1',
+                        title: 'Choose the ritual date',
+                        subtitle: 'Book your pooja online for the temple date you want.',
+                      ),
+                      SizedBox(height: 10),
+                      _ProcessStep(
+                        number: '2',
+                        title: 'Pay securely',
+                        subtitle: 'Your booking is confirmed only after payment succeeds.',
+                      ),
+                      SizedBox(height: 10),
+                      _ProcessStep(
+                        number: '3',
+                        title: 'Our team oversees the booking and updates status',
+                        subtitle: 'Our admin team manually verifies, schedules, and progresses the pooja.',
+                      ),
+                      SizedBox(height: 10),
+                      _ProcessStep(
+                        number: '4',
+                        title: 'Receive video proof after completion',
+                        subtitle: 'Once the pooja is completed, you can view and download the uploaded video proof from your booking.',
+                      ),
+                    ],
+                  ),
+                ),
+
                 // ── Availability Calendar ────────────────────────────────
                 _Section(
                   title: 'Select Date',
@@ -365,7 +403,30 @@ class _SpecialPoojaDetailScreenState
       ),
 
       // ── Sticky Book CTA ───────────────────────────────────────────────
-      bottomNavigationBar: _BookingCTA(pooja: pooja, selectedDay: _selectedDay),
+      bottomNavigationBar: _BookingCTA(
+        pooja: pooja,
+        selectedDay: _selectedDay,
+        onBook: _selectedDay == null
+            ? null
+            : () => _openBookingSheet(context, pooja, _selectedDay!),
+      ),
+    );
+  }
+
+  void _openBookingSheet(
+    BuildContext context,
+    SpecialPoojaModel pooja,
+    DateTime selectedDay,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SpecialPoojaBookingSheet(
+        pooja: pooja,
+        selectedDay: selectedDay,
+      ),
     );
   }
 }
@@ -419,6 +480,67 @@ class _QuickStat extends StatelessWidget {
   }
 }
 
+class _ProcessStep extends StatelessWidget {
+  const _ProcessStep({
+    required this.number,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String number;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.secondary.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            number,
+            style: const TextStyle(
+              color: AppColors.secondary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.black54,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ── Section card ──────────────────────────────────────────────────────────────
 
 class _Section extends StatelessWidget {
@@ -464,10 +586,15 @@ class _Section extends StatelessWidget {
 // ── Booking CTA ───────────────────────────────────────────────────────────────
 
 class _BookingCTA extends StatelessWidget {
-  const _BookingCTA({required this.pooja, required this.selectedDay});
+  const _BookingCTA({
+    required this.pooja,
+    required this.selectedDay,
+    required this.onBook,
+  });
 
   final SpecialPoojaModel pooja;
   final DateTime? selectedDay;
+  final VoidCallback? onBook;
 
   @override
   Widget build(BuildContext context) {
@@ -506,11 +633,7 @@ class _BookingCTA extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             child: FilledButton(
-              onPressed: selectedDay == null
-                  ? null
-                  : () {
-                      context.push(Routes.bookingWizard);
-                    },
+              onPressed: onBook,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.secondary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -524,6 +647,371 @@ class _BookingCTA extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpecialPoojaBookingSheet extends ConsumerStatefulWidget {
+  const _SpecialPoojaBookingSheet({
+    required this.pooja,
+    required this.selectedDay,
+  });
+
+  final SpecialPoojaModel pooja;
+  final DateTime selectedDay;
+
+  @override
+  ConsumerState<_SpecialPoojaBookingSheet> createState() =>
+      _SpecialPoojaBookingSheetState();
+}
+
+class _SpecialPoojaBookingSheetState
+    extends ConsumerState<_SpecialPoojaBookingSheet> {
+  late final TextEditingController _devoteeNameController;
+  late final TextEditingController _gotraController;
+  late final TextEditingController _sankalpController;
+  late final TextEditingController _notesController;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = ref.read(currentUserProvider);
+    _devoteeNameController = TextEditingController(text: user?.name ?? '');
+    _gotraController = TextEditingController();
+    _sankalpController = TextEditingController();
+    _notesController = TextEditingController();
+    ref.read(paymentProvider.notifier).reset();
+  }
+
+  @override
+  void dispose() {
+    _devoteeNameController.dispose();
+    _gotraController.dispose();
+    _sankalpController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final paymentState = ref.watch(paymentProvider);
+    final user = ref.watch(currentUserProvider);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + bottomInset),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Book Online Pooja',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Pay now. Our team will oversee the request, update the status accordingly, and upload video proof after completion.',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: AppColors.secondary.withValues(alpha: 0.15),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.pooja.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _CheckoutRow(
+                      label: 'Temple',
+                      value: widget.pooja.templeName ?? 'Temple-managed livestream',
+                    ),
+                    _CheckoutRow(
+                      label: 'Date',
+                      value: _formatDate(widget.selectedDay),
+                    ),
+                    _CheckoutRow(
+                      label: 'Mode',
+                      value: 'Online pooja with proof delivery',
+                    ),
+                    _CheckoutRow(
+                      label: 'Amount',
+                      value: widget.pooja.priceLabel,
+                      highlight: true,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _devoteeNameController,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Devotee Name *',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _gotraController,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Gotra',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _sankalpController,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Sankalp / Prayer Intention',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _notesController,
+                minLines: 3,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Additional Notes',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'What happens after payment',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Your booking goes to admin for manual review. Status updates appear under My Bookings, and the completion video proof becomes available there after the ritual is done.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade700,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (paymentState.isFailed && paymentState.errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  paymentState.errorMessage!,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ],
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: _submitting || paymentState.isProcessing
+                    ? null
+                    : () => _payAndBook(context, user),
+                icon: paymentState.isProcessing || _submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.lock_rounded),
+                label: Text(
+                  paymentState.isProcessing || _submitting
+                      ? 'Processing…'
+                      : 'Pay ${widget.pooja.priceLabel} & Book',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52),
+                  backgroundColor: AppColors.secondary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _payAndBook(BuildContext context, UserModel? user) async {
+    if (_devoteeNameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter the devotee name.')),
+      );
+      return;
+    }
+    if (user == null || user.role == UserRole.guest) {
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        context.go(Routes.login);
+      }
+      return;
+    }
+
+    setState(() => _submitting = true);
+    ref.read(paymentProvider.notifier).reset();
+    final orderId =
+        'sp_${widget.pooja.id}_${DateTime.now().millisecondsSinceEpoch}';
+
+    try {
+      final paymentResult = await ref.read(paymentProvider.notifier).pay(
+            PaymentRequest(
+              orderId: orderId,
+              amountPaise: (widget.pooja.price * 100).round(),
+              description:
+                  '${widget.pooja.title} on ${_formatDate(widget.selectedDay)}',
+              customerName: user.name,
+              customerEmail: user.email,
+              customerPhone: user.phone ?? '',
+              metadata: {
+                'special_pooja_id': widget.pooja.id,
+                'booking_date': widget.selectedDay.toIso8601String(),
+              },
+            ),
+          );
+
+      if (!paymentResult.isSuccess) {
+        return;
+      }
+
+      final booking = await ref.read(bookingRepositoryProvider).createSpecialPoojaBooking(
+            pooja: widget.pooja,
+            date: widget.selectedDay,
+            userId: user.id,
+            paymentId: paymentResult.providerPaymentId ?? paymentResult.transactionId ?? orderId,
+            notes: _buildBookingNotes(user.name),
+          );
+
+      await ref.read(bookingListProvider.notifier).loadBookings(user.id);
+
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      context.push('/booking/${booking.id}');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  String _buildBookingNotes(String customerName) {
+    final lines = <String>[
+      'Booking type: Online special pooja',
+      'Customer: $customerName',
+      'Devotee name: ${_devoteeNameController.text.trim()}',
+      if (_gotraController.text.trim().isNotEmpty)
+        'Gotra: ${_gotraController.text.trim()}',
+      if (_sankalpController.text.trim().isNotEmpty)
+        'Sankalp: ${_sankalpController.text.trim()}',
+      if (_notesController.text.trim().isNotEmpty)
+        'Additional notes: ${_notesController.text.trim()}',
+    ];
+    return lines.join('\n');
+  }
+
+  static String _formatDate(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+}
+
+class _CheckoutRow extends StatelessWidget {
+  const _CheckoutRow({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
+
+  final String label;
+  final String value;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 88,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
+                color: highlight ? AppColors.primary : Colors.black87,
               ),
             ),
           ),

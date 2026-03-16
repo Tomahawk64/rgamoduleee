@@ -30,6 +30,7 @@ abstract class IAdminRepository {
   Future<AdminBookingRow> updateBookingStatus(
       String id, BookingStatus status);
   Future<AdminBookingRow> assignPandit(String bookingId, String panditId);
+  Future<AdminBookingRow> markAsPaid(String bookingId);
 
   // Consultations
   Future<List<AdminConsultationRow>> fetchConsultations();

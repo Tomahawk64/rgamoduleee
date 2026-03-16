@@ -12,8 +12,6 @@ import '../models/booking_model.dart';
 import '../models/booking_status.dart';
 import '../models/time_slot_model.dart';
 import '../providers/booking_provider.dart';
-import '../../consultation/providers/consultation_provider.dart';
-import '../../consultation/models/pandit_model.dart' show PanditModel;
 
 // ── Entry Point ───────────────────────────────────────────────────────────────
 
@@ -113,7 +111,6 @@ class _BookingWizardScreenState
                 _StepDate(pre: _pre),
                 _StepSlot(pre: _pre),
                 _StepLocation(pre: _pre),
-                _StepPandit(pre: _pre),
                 _StepConfirm(pre: _pre),
                 _StepPayment(pre: _pre),
               ],
@@ -121,7 +118,7 @@ class _BookingWizardScreenState
           ),
 
           // Bottom navigation bar
-          if (wz.currentStep < 5)
+          if (wz.currentStep < 4)
             _WizardBottomBar(pre: _pre),
         ],
       ),
@@ -133,7 +130,6 @@ class _BookingWizardScreenState
         'Choose Date',
         'Choose Time',
         if (mode == PackageMode.online) 'Online Session' else 'Your Location',
-        'Choose Pandit',
         'Review & Confirm',
         'Payment',
       ];
@@ -179,7 +175,7 @@ class _WizardBottomBar extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(14)),
                 ),
                 child: Text(
-                  wz.currentStep == 4 ? 'Review' : 'Continue',
+                  wz.currentStep == 3 ? 'Review' : 'Continue',
                   style: const TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 15),
                 ),
@@ -972,174 +968,7 @@ class _AddressField extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// STEP 4 – Choose Pandit
-// ════════════════════════════════════════════════════════════════════════════════
-
-class _StepPandit extends ConsumerWidget {
-  const _StepPandit({required this.pre});
-  final PackageModel? pre;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final wz   = ref.watch(bookingWizardProvider(pre));
-    final ctrl  = ref.read(bookingWizardProvider(pre).notifier);
-    final panditState = ref.watch(panditsProvider);
-
-    // Convert PanditModel → PanditOption for booking draft compatibility.
-    PanditOption toPanditOption(PanditModel pm) => PanditOption(
-          id:            pm.id,
-          name:          pm.name,
-          specialty:     pm.specialty,
-          rating:        pm.rating,
-          totalBookings: pm.totalSessions,
-          imageUrl:      pm.avatarUrl,
-          isAvailable:   pm.isOnline,
-        );
-
-    final options = [
-      kAutoAssignPandit,
-      if (panditState.loading)
-        ...[]
-      else
-        ...panditState.pandits.map(toPanditOption),
-    ];
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-      children: [
-        if (panditState.loading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (panditState.error != null)
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text('Could not load pandits. Showing auto-assign only.',
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ),
-        ...options.map((p) {
-          final selected = wz.draft.panditOption?.id == p.id;
-          return _PanditTile(
-            pandit:   p,
-            selected: selected,
-            onTap:    () => ctrl.selectPandit(p),
-          );
-        }),
-      ],
-    );
-  }
-}
-
-class _PanditTile extends StatelessWidget {
-  const _PanditTile({
-    required this.pandit,
-    required this.selected,
-    required this.onTap,
-  });
-  final PanditOption pandit;
-  final bool selected;
-  final VoidCallback onTap;
-
-  bool get isAuto => pandit.id == 'auto';
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      elevation: selected ? 3 : 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: selected ? cs.primary : Colors.transparent,
-          width: 2,
-        ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: isAuto
-                    ? cs.tertiaryContainer
-                    : selected
-                        ? cs.primaryContainer
-                        : cs.surfaceContainerHighest,
-                child: isAuto
-                    ? Icon(Icons.auto_awesome_rounded,
-                        color: cs.onTertiaryContainer)
-                    : Text(
-                        pandit.initials,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: selected
-                              ? cs.onPrimaryContainer
-                              : cs.onSurfaceVariant,
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(pandit.name,
-                        style: tt.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700)),
-                    Text(
-                      pandit.specialty,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                    if (!isAuto) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.star_rounded,
-                              size: 13,
-                              color: Colors.amber[700]),
-                          const SizedBox(width: 2),
-                          Text(pandit.rating.toStringAsFixed(1),
-                              style: tt.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 8),
-                          Icon(Icons.bookmark_rounded,
-                              size: 13,
-                              color: cs.onSurfaceVariant),
-                          const SizedBox(width: 2),
-                          Text('${pandit.totalBookings}',
-                              style: tt.labelSmall?.copyWith(
-                                  color: cs.onSurfaceVariant)),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Radio<String>(
-                value: pandit.id,
-                groupValue: selected ? pandit.id : null,
-                onChanged: (_) => onTap(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-// STEP 5 – Confirm
+// STEP 4 – Confirm
 // ════════════════════════════════════════════════════════════════════════════════
 
 class _StepConfirm extends ConsumerWidget {
@@ -1227,11 +1056,9 @@ class _StepConfirm extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
           _ConfirmSection(
-            title: draft.isAutoAssign ? 'Pandit' : 'Requested Pandit',
+            title: 'Pandit Assignment',
             icon: Icons.person_rounded,
-            content: draft.isAutoAssign
-                ? 'Best available pandit will be auto-assigned'
-                : draft.panditOption?.name ?? '',
+            content: 'A qualified pandit will be assigned by our team 24 hours before your booking.',
           ),
           const SizedBox(height: 10),
           _ConfirmSection(
@@ -1385,7 +1212,7 @@ class _PriceRow extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// STEP 6 – Payment placeholder
+// STEP 5 – Payment placeholder
 // ════════════════════════════════════════════════════════════════════════════════
 
 class _StepPayment extends ConsumerWidget {

@@ -15,6 +15,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/constants/demo_config.dart';
 import '../../core/providers/supabase_provider.dart';
 import '../models/admin_models.dart';
+import '../../packages/models/package_model.dart';
 import '../providers/admin_providers.dart';
 
 const _kPoojaImageBucket = 'special-pooja-images';
@@ -434,7 +435,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
   final _picker = ImagePicker();
 
   late final TextEditingController _title;
-  late final TextEditingController _category;
+  PackageCategory _selectedCategory = PackageCategory.puja;
   late final TextEditingController _description;
   late final TextEditingController _imageUrl;
   late final TextEditingController _price;
@@ -448,7 +449,10 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
     super.initState();
     final p = widget.existing;
     _title = TextEditingController(text: p?.title ?? '');
-    _category = TextEditingController(text: p?.category ?? '');
+    _selectedCategory = PackageCategory.values.firstWhere(
+      (c) => c.label == (p?.category ?? ''),
+      orElse: () => PackageCategory.puja,
+    );
     _description = TextEditingController(text: p?.description ?? '');
     _imageUrl = TextEditingController(text: p?.imageUrl ?? '');
     _price = TextEditingController(
@@ -463,7 +467,6 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
   void dispose() {
     for (final c in [
       _title,
-      _category,
       _description,
       _imageUrl,
       _price,
@@ -506,7 +509,36 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
             const SizedBox(height: 16),
             _FormField(controller: _title, label: 'Title'),
             const SizedBox(height: 12),
-            _FormField(controller: _category, label: 'Category'),
+            // ── Category dropdown ──────────────────────────────────────
+            DropdownButtonFormField<PackageCategory>(
+              value: _selectedCategory,
+              decoration: InputDecoration(
+                labelText: 'Category',
+                helperText:
+                    'Poojas appear under this filter in the Browse Poojas tab.',
+                helperMaxLines: 2,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              ),
+              items: PackageCategory.values.map((cat) {
+                return DropdownMenuItem<PackageCategory>(
+                  value: cat,
+                  child: Row(
+                    children: [
+                      Icon(cat.icon, size: 18, color: AppColors.primary),
+                      const SizedBox(width: 10),
+                      Text(cat.label),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (cat) {
+                if (cat != null) setState(() => _selectedCategory = cat);
+              },
+            ),
             const SizedBox(height: 12),
             _FormField(
                 controller: _description,
@@ -634,7 +666,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
   }
 
   void _save() {
-    if (_title.text.isEmpty || _category.text.isEmpty) return;
+    if (_title.text.isEmpty) return;
     final imageText = _imageUrl.text.trim();
     final imageUrl = imageText.isEmpty ? null : imageText;
     if (imageUrl != null && !_looksLikeValidImageSource(imageUrl)) {
@@ -653,7 +685,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
     final pooja = AdminPooja(
       id: widget.existing?.id ?? const Uuid().v4(),
       title: _title.text.trim(),
-      category: _category.text.trim(),
+      category: _selectedCategory.label,
       description: _description.text.trim(),
       imageUrl: imageUrl,
       basePrice: price,

@@ -10,6 +10,7 @@ enum PackageCategory {
   havan,
   katha,
   remedies,
+  corporate,
   other,
 }
 
@@ -22,6 +23,7 @@ extension PackageCategoryX on PackageCategory {
       case PackageCategory.havan:      return 'Havan';
       case PackageCategory.katha:      return 'Katha';
       case PackageCategory.remedies:   return 'Remedies';
+      case PackageCategory.corporate:  return 'Corporate Pooja';
       case PackageCategory.other:      return 'Other';
     }
   }
@@ -34,6 +36,7 @@ extension PackageCategoryX on PackageCategory {
       case PackageCategory.havan:      return Icons.brightness_5_rounded;
       case PackageCategory.katha:      return Icons.menu_book_rounded;
       case PackageCategory.remedies:   return Icons.healing_rounded;
+      case PackageCategory.corporate:  return Icons.business_center_rounded;
       case PackageCategory.other:      return Icons.category_rounded;
     }
   }

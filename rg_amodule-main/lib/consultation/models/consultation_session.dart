@@ -69,6 +69,7 @@ class ChatMessage {
     required this.senderId,
     required this.senderName,
     required this.text,
+    this.imageUrl,
     required this.isFromPandit,
     DateTime? sentAt,
   })  : id = id ?? const Uuid().v4(),
@@ -79,18 +80,21 @@ class ChatMessage {
   final String senderId;
   final String senderName;
   final String text;
+  final String? imageUrl;
   final bool isFromPandit;
   final DateTime sentAt;
 
   /// True when this is a system message (session start, extend, expiry).
   bool get isSystem => senderId == 'system';
+    bool get hasImage => (imageUrl ?? '').isNotEmpty;
 
-  ChatMessage copyWith({String? text}) => ChatMessage(
+    ChatMessage copyWith({String? text, String? imageUrl}) => ChatMessage(
         id: id,
         sessionId: sessionId,
         senderId: senderId,
         senderName: senderName,
         text: text ?? this.text,
+      imageUrl: imageUrl ?? this.imageUrl,
         isFromPandit: isFromPandit,
         sentAt: sentAt,
       );

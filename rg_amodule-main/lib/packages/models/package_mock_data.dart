@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_images.dart';
 import 'package_model.dart';
 
-// ── Reviews ───────────────────────────────────────────────────────────────────
+// -- Reviews -------------------------------------------------------------------
 final _r1 = ReviewModel(
   id: 'rv1', userName: 'Priya Sharma', rating: 5.0,
   comment: 'Pandit ji was very knowledgeable and the puja was conducted beautifully. Highly recommend!',
@@ -35,7 +35,7 @@ final _r6 = ReviewModel(
   createdAt: DateTime(2025, 9, 18), userInitials: 'DK', avatarColor: const Color(0xFF00838F),
 );
 
-// ── Mock Packages ─────────────────────────────────────────────────────────────
+// -- Mock Packages -------------------------------------------------------------
 final List<PackageModel> kMockPackageList = [
   PackageModel(
     id: 'pkg001',
@@ -135,7 +135,7 @@ final List<PackageModel> kMockPackageList = [
     id: 'pkg005',
     title: 'Vastu Home Inspection',
     description:
-        'On-site vastu inspection for residential properties (2–3 BHK). Includes directional analysis, energy mapping, and a comprehensive digital report with easy-to-follow remedies.',
+        'On-site vastu inspection for residential properties (2-3 BHK). Includes directional analysis, energy mapping, and a comprehensive digital report with easy-to-follow remedies.',
     price: 2999,
     discountPrice: 2499,
     durationMinutes: 120,
@@ -193,7 +193,7 @@ final List<PackageModel> kMockPackageList = [
       'Mangal yantra energisation (dispatched)',
       'Mangal mantra japa (1,008 times)',
       'Red coral gemstone consultation',
-      'Do\'s and Don\'ts guidance PDF',
+      "Do's and Don'ts guidance PDF",
     ],
     reviews: [_r4, _r6],
   ),
@@ -218,5 +218,76 @@ final List<PackageModel> kMockPackageList = [
       'Monthly summary report',
     ],
     reviews: [_r2, _r3, _r6],
+  ),
+
+  // -- Corporate Business Poojas ---------------------------------------------
+  PackageModel(
+    id: 'pkg009',
+    title: 'Corporate Office Vastu & Puja',
+    description:
+        'A comprehensive puja and Vastu consultation for business offices and commercial spaces. Includes Lakshmi-Ganesh puja, Vastu shanti havan, and energy cleansing for prosperity and growth.',
+    price: 5999,
+    discountPrice: 4999,
+    durationMinutes: 150,
+    mode: PackageMode.both,
+    category: PackageCategory.corporate,
+    panditName: 'Pt. Ramesh Sharma',
+    rating: 4.8, reviewCount: 72, bookingCount: 185,
+    isFeatured: true,
+    imageUrl: AppImages.poojaLakshmi,
+    includes: [
+      'Senior pandit with corporate event experience',
+      'Lakshmi-Ganesh puja for wealth & success',
+      'Vastu shanti havan for office space',
+      'Energy cleansing ritual',
+      'Post-puja prasad & blessings',
+      'Business prosperity yantra (energised & dispatched)',
+    ],
+    reviews: [_r1, _r4],
+  ),
+  PackageModel(
+    id: 'pkg010',
+    title: 'Business Launch Muhurat & Puja',
+    description:
+        'Get your business off to an auspicious start with a muhurat puja for new venture launch. Includes kundali-based muhurat selection, Ganesh puja, Saraswati puja, and a business prosperity havan.',
+    price: 3499,
+    discountPrice: 2799,
+    durationMinutes: 120,
+    mode: PackageMode.both,
+    category: PackageCategory.corporate,
+    panditName: 'Acharya Sunil Joshi',
+    rating: 4.9, reviewCount: 55, bookingCount: 140,
+    isPopular: true,
+    imageUrl: AppImages.poojaNavgraha,
+    includes: [
+      'Muhurat selection based on business kundali',
+      'Ganesh & Saraswati puja',
+      'Business prosperity havan',
+      'Kumkum tilak for all stakeholders',
+      'Digital muhurat certificate',
+      'Remedies for business stability',
+    ],
+    reviews: [_r4, _r2, _r5],
+  ),
+  PackageModel(
+    id: 'pkg011',
+    title: 'Annual Business Navratri Puja',
+    description:
+        'Mark the auspicious Navratri with a dedicated corporate puja package. Nine-day mantra chanting, Devi puja, and havan for business growth and team well-being.',
+    price: 7999,
+    durationMinutes: 60,
+    mode: PackageMode.online,
+    category: PackageCategory.corporate,
+    panditName: 'Pt. Kavita Mishra',
+    rating: 4.7, reviewCount: 38, bookingCount: 95,
+    imageUrl: AppImages.poojaSatyanarayan,
+    includes: [
+      'Nine-day Devi mantra chanting (108 x 9 days)',
+      'Live-streamed havan on Ashtami',
+      'Certificate of puja completion',
+      'Business prosperity prasad shipped',
+      'Dedicated WhatsApp group for updates',
+    ],
+    reviews: [_r1, _r3],
   ),
 ];

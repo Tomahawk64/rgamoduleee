@@ -599,11 +599,13 @@ class _PaymentOption extends StatelessWidget {
                 ],
               ),
             ),
-            Radio<String>(
-              value: value,
-              groupValue: groupValue,
-              onChanged: onChanged,
-              activeColor: AppColors.primary,
+            Icon(
+              value == groupValue
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: value == groupValue
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
             ),
           ],
         ),

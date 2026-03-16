@@ -15,6 +15,8 @@
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../account/models/app_notification.dart';
+import '../../account/repository/notifications_repository.dart';
 import '../../booking/models/booking_status.dart';
 import '../models/admin_models.dart';
 import 'admin_repository.dart';
@@ -398,11 +400,13 @@ class SupabaseAdminRepository implements IAdminRepository {
 
       final uid = row['user_id'] as String?;
       final pid = row['pandit_id'] as String?;
-      return _bookingFromRow({
+      final booking = _bookingFromRow({
         ...row,
         'user': {'full_name': uid != null ? (namesById[uid] ?? '') : ''},
         'pandit': pid != null ? {'full_name': namesById[pid] ?? ''} : null,
       });
+      await _notifyBookingStatusChanged(booking, status);
+      return booking;
     } on PostgrestException catch (e) {
       throw Exception('updateBookingStatus failed: ${e.message}');
     }
@@ -448,13 +452,152 @@ class SupabaseAdminRepository implements IAdminRepository {
 
       final uid = row['user_id'] as String?;
       final pid = row['pandit_id'] as String?;
-      return _bookingFromRow({
+      final booking = _bookingFromRow({
         ...row,
         'user': {'full_name': uid != null ? (namesById[uid] ?? '') : ''},
         'pandit': pid != null ? {'full_name': namesById[pid] ?? ''} : null,
       });
+      await _notifyPanditAssignment(booking);
+      return booking;
     } on PostgrestException catch (e) {
       throw Exception('assignPandit failed: ${e.message}');
+    }
+  }
+
+  @override
+  Future<AdminBookingRow> markAsPaid(String bookingId) async {
+    try {
+      final rows = await _client
+          .from('bookings')
+          .update({'is_paid': true})
+          .eq('id', bookingId)
+          .select(_kBookingSelect);
+
+      final list = rows as List;
+      if (list.isEmpty) throw Exception('markAsPaid: no row returned');
+      final row = list.first as Map<String, dynamic>;
+
+      final profileIds = <String>{
+        if (row['user_id'] != null) row['user_id'] as String,
+        if (row['pandit_id'] != null) row['pandit_id'] as String,
+      };
+      final namesById = <String, String>{};
+      if (profileIds.isNotEmpty) {
+        final profileRows = await _client
+            .from('profiles')
+            .select('id, full_name')
+            .inFilter('id', profileIds.toList());
+        for (final r in (profileRows as List)) {
+          final p = r as Map<String, dynamic>;
+          namesById[p['id'] as String] = p['full_name'] as String? ?? '';
+        }
+      }
+
+      final uid = row['user_id'] as String?;
+      final pid = row['pandit_id'] as String?;
+      final booking = _bookingFromRow({
+        ...row,
+        'user': {'full_name': uid != null ? (namesById[uid] ?? '') : ''},
+        'pandit': pid != null ? {'full_name': namesById[pid] ?? ''} : null,
+      });
+      if (uid != null) {
+        await _createNotification(
+          userId: uid,
+          type: AppNotificationType.paymentCompleted,
+          title: 'Payment completed',
+          body: 'Payment was marked complete for ${booking.packageTitle}.',
+          entityType: 'booking',
+          entityId: booking.id,
+        );
+      }
+      return booking;
+    } on PostgrestException catch (e) {
+      throw Exception('markAsPaid failed: ${e.message}');
+    }
+  }
+
+  Future<void> _notifyPanditAssignment(AdminBookingRow booking) async {
+    if (booking.userId != null && booking.panditName != null) {
+      await _createNotification(
+        userId: booking.userId!,
+        type: AppNotificationType.bookingAssigned,
+        title: 'Pandit assigned',
+        body: '${booking.panditName} has been assigned to ${booking.packageTitle}.',
+        entityType: 'booking',
+        entityId: booking.id,
+      );
+    }
+    if (booking.panditId != null) {
+      await _createNotification(
+        userId: booking.panditId!,
+        type: AppNotificationType.bookingAssigned,
+        title: 'New booking assigned',
+        body: 'You were assigned to ${booking.packageTitle} on ${booking.formattedDate}.',
+        entityType: 'booking',
+        entityId: booking.id,
+      );
+    }
+  }
+
+  Future<void> _notifyBookingStatusChanged(
+    AdminBookingRow booking,
+    BookingStatus status,
+  ) async {
+    if (booking.userId == null) return;
+    switch (status) {
+      case BookingStatus.pending:
+        return;
+      case BookingStatus.confirmed:
+        await _createNotification(
+          userId: booking.userId!,
+          type: AppNotificationType.bookingConfirmed,
+          title: 'Booking confirmed',
+          body: '${booking.packageTitle} has been confirmed.',
+          entityType: 'booking',
+          entityId: booking.id,
+        );
+      case BookingStatus.assigned:
+        await _notifyPanditAssignment(booking);
+      case BookingStatus.completed:
+        await _createNotification(
+          userId: booking.userId!,
+          type: AppNotificationType.bookingConfirmed,
+          title: 'Booking completed',
+          body: '${booking.packageTitle} has been completed.',
+          entityType: 'booking',
+          entityId: booking.id,
+        );
+      case BookingStatus.cancelled:
+        await _createNotification(
+          userId: booking.userId!,
+          type: AppNotificationType.bookingCancelled,
+          title: 'Booking cancelled',
+          body: '${booking.packageTitle} was cancelled.',
+          entityType: 'booking',
+          entityId: booking.id,
+        );
+    }
+  }
+
+  Future<void> _createNotification({
+    required String userId,
+    required AppNotificationType type,
+    required String title,
+    required String body,
+    String? entityType,
+    String? entityId,
+  }) async {
+    try {
+      await SupabaseNotificationsRepository(_client).createNotification(
+        userId: userId,
+        type: type,
+        title: title,
+        body: body,
+        entityType: entityType,
+        entityId: entityId,
+      );
+    } catch (_) {
+      // Best-effort only.
     }
   }
 
@@ -918,6 +1061,10 @@ class SupabaseAdminRepository implements IAdminRepository {
 
   static AdminSessionStatus _parseSessionStatus(String s) {
     switch (s) {
+      case 'pending': return AdminSessionStatus.pending;
+      case 'confirmed': return AdminSessionStatus.confirmed;
+      case 'reschedule_proposed': return AdminSessionStatus.rescheduleProposed;
+      case 'rejected': return AdminSessionStatus.rejected;
       case 'active':   return AdminSessionStatus.active;
       case 'expired':  return AdminSessionStatus.expired;
       case 'refunded': return AdminSessionStatus.refunded;

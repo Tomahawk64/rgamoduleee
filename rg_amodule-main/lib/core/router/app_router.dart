@@ -11,10 +11,14 @@ import '../../home/screens/home_screen.dart';
 import '../../packages/models/package_model.dart';
 import '../../packages/screens/packages_screen.dart';
 import '../../packages/screens/package_detail_screen.dart';
+import '../../booking/screens/booking_screen.dart';
 import '../../booking/screens/booking_wizard_screen.dart';
 import '../../booking/screens/booking_detail_screen.dart';
 import '../../booking/screens/proof_upload_screen.dart';
 import '../../consultation/screens/chat_screen.dart';
+import '../../consultation/screens/consultation_screen.dart';
+import '../../consultation/screens/consultant_profile_screen.dart';
+import '../../consultation/screens/consultation_requests_screen.dart';
 import '../../consultation/models/consultation_session.dart';
 import '../../shop/screens/shop_screen.dart';
 import '../../shop/screens/product_detail_screen.dart';
@@ -28,7 +32,10 @@ import '../../admin/screens/admin_consultations_screen.dart';
 import '../../admin/screens/admin_reports_screen.dart';
 import '../../admin/screens/admin_users_screen.dart';
 import '../../admin/screens/admin_products_screen.dart';
+import '../../pandit/screens/pandit_screen.dart';
 import '../../account/screens/edit_profile_screen.dart';
+import '../../account/screens/manage_addresses_screen.dart';
+import '../../account/screens/notifications_screen.dart';
 import '../../shop/screens/orders_screen.dart';
 import '../../pandit/screens/pandit_booking_detail_screen.dart';
 import '../../special_poojas/screens/special_poojas_screen.dart';
@@ -57,7 +64,10 @@ abstract class Routes {
   static const bookingUploadProof = '/booking/:id/upload-proof';
 
   // Consultation chat (modal)
+  static const consultation = '/consultation';
   static const consultationChat = '/consultation/chat';
+  static const consultationProfile = '/consultation/pandit/:id';
+  static const consultationRequests = '/account/consultations';
 
   // Shop sub-routes
   static const productDetail = '/shop/product/:id';
@@ -75,11 +85,15 @@ abstract class Routes {
   static const adminProducts = '/account/admin/products';
 
   // User sub-routes
+  static const myBookings = '/account/bookings';
   static const editProfile = '/account/edit-profile';
+  static const manageAddresses = '/account/addresses';
+  static const notifications = '/account/notifications';
   static const orders = '/shop/orders';
 
-  // Pandit booking detail (nested under /account/pandit)
-  static const panditBookingDetail = '/account/pandit/booking/:id';
+  // Pandit area
+  static const panditDashboard = '/pandit';
+  static const panditBookingDetail = '/pandit/booking/:id';
 }
 
 // ── RouterNotifier ──────────────────────────────────────────────────────────
@@ -109,14 +123,22 @@ class RouterNotifier extends ChangeNotifier {
         return Routes.login;
 
       case AuthAuthenticated(user: final user):
-        if (isOnSplash || isOnAuth) return Routes.home;
+        if (isOnSplash || isOnAuth) {
+          if (user.role == UserRole.pandit) return Routes.panditDashboard;
+          return Routes.home;
+        }
+
+        // Pandit should only see the pandit interface.
+        if (user.role == UserRole.pandit && !location.startsWith('/pandit')) {
+          return Routes.panditDashboard;
+        }
 
         // Block non-admin from admin routes
         if (location.startsWith('/account/admin') && user.role != UserRole.admin) {
           return Routes.account;
         }
         // Block non-pandit from pandit routes (unless admin)
-        if (location.startsWith('/account/pandit') &&
+        if (location.startsWith('/pandit') &&
             user.role != UserRole.pandit &&
             user.role != UserRole.admin) {
           return Routes.account;
@@ -244,6 +266,15 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // ── Consultation Chat (modal) ─────────────────────────────────────────
       GoRoute(
+        path: Routes.consultation,
+        name: 'consultation',
+        pageBuilder: (_, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const ConsultationScreen(),
+          transitionsBuilder: _slideRightTransition,
+        ),
+      ),
+      GoRoute(
         path: Routes.consultationChat,
         name: 'consultation-chat',
         pageBuilder: (_, state) => CustomTransitionPage(
@@ -251,6 +282,39 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: ChatScreen(session: state.extra as ConsultationSession),
           transitionsBuilder: _slideUpTransition,
         ),
+      ),
+      GoRoute(
+        path: Routes.consultationProfile,
+        name: 'consultation-profile',
+        pageBuilder: (_, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: ConsultantProfileScreen(panditId: state.pathParameters['id']!),
+          transitionsBuilder: _slideRightTransition,
+        ),
+      ),
+
+      // ── Pandit-only area (outside customer tab shell) ─────────────────────
+      GoRoute(
+        path: Routes.panditDashboard,
+        name: 'pandit-dashboard',
+        pageBuilder: (_, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const PanditScreen(),
+          transitionsBuilder: _slideRightTransition,
+        ),
+        routes: [
+          GoRoute(
+            path: 'booking/:id',
+            name: 'pandit-booking-detail',
+            pageBuilder: (_, state) => CustomTransitionPage(
+              key: state.pageKey,
+              child: PanditBookingDetailScreen(
+                bookingId: state.pathParameters['id']!,
+              ),
+              transitionsBuilder: _slideRightTransition,
+            ),
+          ),
+        ],
       ),
 
       // ── Main Shell: 5 Bottom-Tab Branches ─────────────────────────────────
@@ -444,6 +508,25 @@ final routerProvider = Provider<GoRouter>((ref) {
                     ),
                   ],
                 ),
+                // My Bookings
+                GoRoute(
+                  path: 'bookings',
+                  name: 'my-bookings',
+                  pageBuilder: (_, state) => CustomTransitionPage(
+                    key: state.pageKey,
+                    child: const BookingScreen(),
+                    transitionsBuilder: _slideRightTransition,
+                  ),
+                ),
+                GoRoute(
+                  path: 'consultations',
+                  name: 'consultation-requests',
+                  pageBuilder: (_, state) => CustomTransitionPage(
+                    key: state.pageKey,
+                    child: const ConsultationRequestsScreen(),
+                    transitionsBuilder: _slideRightTransition,
+                  ),
+                ),
                 // Edit profile
                 GoRoute(
                   path: 'edit-profile',
@@ -454,15 +537,21 @@ final routerProvider = Provider<GoRouter>((ref) {
                     transitionsBuilder: _slideRightTransition,
                   ),
                 ),
-                // Pandit booking detail
                 GoRoute(
-                  path: 'pandit/booking/:id',
-                  name: 'pandit-booking-detail',
+                  path: 'addresses',
+                  name: 'manage-addresses',
                   pageBuilder: (_, state) => CustomTransitionPage(
                     key: state.pageKey,
-                    child: PanditBookingDetailScreen(
-                      bookingId: state.pathParameters['id']!,
-                    ),
+                    child: const ManageAddressesScreen(),
+                    transitionsBuilder: _slideRightTransition,
+                  ),
+                ),
+                GoRoute(
+                  path: 'notifications',
+                  name: 'notifications',
+                  pageBuilder: (_, state) => CustomTransitionPage(
+                    key: state.pageKey,
+                    child: const NotificationsScreen(),
                     transitionsBuilder: _slideRightTransition,
                   ),
                 ),

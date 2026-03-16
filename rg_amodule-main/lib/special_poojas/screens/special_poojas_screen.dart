@@ -76,7 +76,7 @@ class _SpecialPoojasScreenState extends ConsumerState<SpecialPoojasScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Sacred rituals at divine temples',
+                          'Book online temple rituals with payment and video proof',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 13,

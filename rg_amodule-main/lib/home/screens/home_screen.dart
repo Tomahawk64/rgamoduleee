@@ -4,9 +4,14 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../auth/providers/auth_provider.dart';
+import '../../account/providers/notifications_provider.dart';
+import '../../consultation/models/pandit_model.dart';
+import '../../consultation/providers/consultation_provider.dart';
+import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../packages/providers/packages_provider.dart';
 import '../../packages/widgets/package_list_card.dart';
+import '../../packages/models/package_model.dart';
 import '../../widgets/loading_shimmer.dart';
 import '../models/home_mock_data.dart';
 import '../models/home_models.dart';
@@ -27,18 +32,6 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final filter = ref.watch(_panditFilterProvider);
-
-    final pandits = kMockPandits.where((p) {
-      switch (filter) {
-        case PanditFilter.online:
-          return p.isOnline;
-        case PanditFilter.offline:
-          return !p.isOnline;
-        case PanditFilter.all:
-          return true;
-      }
-    }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -57,7 +50,22 @@ class HomeScreen extends ConsumerWidget {
                 HeroSlider(
                   slides: kHeroSlides,
                   height: 190,
-                  onActionTap: (route) => context.push(route),
+                    onActionTap: (route) {
+                      final uri = Uri.parse(route);
+                      final catName = uri.queryParameters['category'];
+                      if (catName != null) {
+                        final cat = PackageCategory.values.firstWhere(
+                          (c) => c.name == catName,
+                          orElse: () => PackageCategory.puja,
+                        );
+                        ref.read(packageFilterProvider.notifier).setCategory(cat);
+                        ref.read(packagePageProvider.notifier).state =
+                            kPackagePageSize;
+                        context.push(uri.path);
+                      } else {
+                        context.push(route);
+                      }
+                    },
                 ),
                 const SizedBox(height: 24),
 
@@ -72,82 +80,190 @@ class HomeScreen extends ConsumerWidget {
                     if (cat.route != null) context.push(cat.route!);
                   },
                 ),
-                const SizedBox(height: 28),
-
-                // 3. Featured Pandits header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: _SectionHeader(
-                          title: 'Featured Pandits',
-                          padding: EdgeInsets.zero,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => context.push('/services'),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          foregroundColor: AppColors.primary,
-                        ),
-                        child: const Text('See all',
-                            style: TextStyle(fontSize: 13)),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 18),
+                const _SectionHeader(
+                  title: 'Live Consultants Available',
+                  padding: EdgeInsets.only(left: 16, right: 16, bottom: 12),
                 ),
-                const SizedBox(height: 10),
-
-                // Online / Offline toggle
-                _PanditFilterToggle(
-                  selected: filter,
-                  onChanged: (v) =>
-                      ref.read(_panditFilterProvider.notifier).state = v,
-                ),
-                const SizedBox(height: 14),
-
-                // Pandit horizontal list
-                _PanditList(pandits: pandits),
-                const SizedBox(height: 28),
-
-                // 4. Popular Packages header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: _SectionHeader(
-                          title: 'Popular Packages',
-                          padding: EdgeInsets.zero,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => context.push('/packages'),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          foregroundColor: AppColors.primary,
-                        ),
-                        child: const Text('See all',
-                            style: TextStyle(fontSize: 13)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
+                const _LiveConsultantsSection(),
+                const SizedBox(height: 24),
               ],
             ),
           ),
 
-          // 5. Packages as sliver list (Supabase-driven featured packages)
-          _FeaturedPackagesSliver(),
-
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
+      ),
+    );
+  }
+}
+
+class _LiveConsultantsSection extends ConsumerWidget {
+  const _LiveConsultantsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(panditsProvider);
+    if (state.loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: LinearProgressIndicator(minHeight: 2),
+      );
+    }
+    if (state.error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          'Unable to load consultants right now.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+      );
+    }
+
+    final online = state.pandits.where((p) => p.isOnline).toList();
+    final list = online.isNotEmpty ? online : state.pandits;
+    if (list.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          'No consultants available currently.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 228,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: list.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (_, i) => _LiveConsultantCard(pandit: list[i]),
+      ),
+    );
+  }
+}
+
+class _LiveConsultantCard extends StatelessWidget {
+  const _LiveConsultantCard({required this.pandit});
+
+  final PanditModel pandit;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 206,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => context.push(
+          Routes.consultationProfile.replaceFirst(':id', pandit.id),
+        ),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.primary.withValues(alpha: 0.10),
+                AppColors.secondary.withValues(alpha: 0.10),
+              ],
+            ),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                      backgroundImage: (pandit.avatarUrl ?? '').startsWith('assets/')
+                          ? AssetImage(pandit.avatarUrl!)
+                          : null,
+                      child: (pandit.avatarUrl ?? '').startsWith('assets/')
+                          ? null
+                          : Text(
+                              pandit.initials,
+                              style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (pandit.isOnline ? AppColors.success : AppColors.warning)
+                            .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        pandit.isOnline ? 'Online' : 'Offline',
+                        style: TextStyle(
+                          color:
+                              pandit.isOnline ? AppColors.success : AppColors.warning,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  pandit.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  pandit.specialty,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.star_rounded, color: AppColors.warning, size: 16),
+                    const SizedBox(width: 3),
+                    Text(
+                      pandit.rating.toStringAsFixed(1),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${pandit.totalSessions} sessions',
+                      style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Text(
+                      pandit.rates.isNotEmpty ? pandit.rates.first.priceLabel : '₹—',
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(Icons.arrow_forward_rounded,
+                        size: 18, color: AppColors.primary),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -200,7 +316,7 @@ class _FeaturedPackagesSliver extends ConsumerWidget {
 }
 
 // ── App Bar ────────────────────────────────────────────────────────────────────
-class _HomeAppBar extends StatelessWidget {
+class _HomeAppBar extends ConsumerWidget {
   const _HomeAppBar({required this.userName});
 
   final String userName;
@@ -213,7 +329,8 @@ class _HomeAppBar extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unreadCount = ref.watch(unreadNotificationsCountProvider);
     return SliverAppBar(
       backgroundColor: AppColors.surface,
       elevation: 0,
@@ -267,20 +384,31 @@ class _HomeAppBar extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.notifications_outlined,
                     color: AppColors.textPrimary),
-                onPressed: () => _showNotificationsSheet(context),
+                onPressed: () => context.push(Routes.notifications),
               ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.error,
-                    shape: BoxShape.circle,
+              if (unreadCount > 0)
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: const BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        unreadCount > 9 ? '9+' : '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ],

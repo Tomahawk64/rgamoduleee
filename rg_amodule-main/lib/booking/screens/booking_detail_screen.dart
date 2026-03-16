@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../auth/models/auth_state.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/utils/file_download.dart';
 import '../../models/role_enum.dart';
 import '../models/booking_model.dart';
 import '../models/booking_status.dart';
@@ -145,15 +147,7 @@ class _DetailView extends ConsumerWidget {
             // ── Pandit ──────────────────────────────────────────────
             _SectionCard(
               title: 'Pandit',
-              child: _DetailRow(
-                icon: Icons.person_rounded,
-                label: booking.isAutoAssigned ? 'Assignment' : 'Requested',
-                value: booking.isAutoAssigned
-                    ? (booking.panditName != null
-                        ? '${booking.panditName!} (auto-assigned)'
-                        : 'Awaiting auto-assignment')
-                    : (booking.panditName ?? 'Awaiting confirmation'),
-              ),
+              child: _PanditSection(booking: booking),
             ),
             const SizedBox(height: 12),
 
@@ -218,8 +212,14 @@ class _DetailView extends ConsumerWidget {
             // ── Book again ──────────────────────────────────────────
             if (booking.status.isFinal)
               OutlinedButton.icon(
-                onPressed: () =>
-                    context.push('/booking/wizard?packageId=${booking.packageId}'),
+                onPressed: () {
+                  if (booking.specialPoojaId != null &&
+                      booking.specialPoojaId!.isNotEmpty) {
+                    context.push('/special/${booking.specialPoojaId}');
+                    return;
+                  }
+                  context.push('/booking/wizard?packageId=${booking.packageId}');
+                },
                 icon: const Icon(Icons.replay_rounded),
                 label: const Text('Book Again'),
                 style: OutlinedButton.styleFrom(
@@ -238,17 +238,17 @@ class _DetailView extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Cancel Booking'),
         content: const Text(
             'Are you sure? This action cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('No'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             style: FilledButton.styleFrom(backgroundColor: cs.error),
             child: const Text('Yes, Cancel'),
           ),
@@ -272,6 +272,105 @@ class _DetailView extends ConsumerWidget {
     final m = d.minute.toString().padLeft(2, '0');
     final period = d.hour < 12 ? 'AM' : 'PM';
     return '${d.day} ${months[d.month - 1]} ${d.year}, $h:$m $period';
+  }
+}
+
+class _PanditSection extends StatelessWidget {
+  const _PanditSection({required this.booking});
+
+  final BookingModel booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final canRevealProfile = _shouldRevealPanditProfile(booking);
+    final name = booking.isAutoAssigned
+        ? (booking.panditName != null
+            ? '${booking.panditName!} (auto-assigned)'
+            : 'Awaiting auto-assignment')
+        : (booking.panditName ?? 'Awaiting confirmation');
+
+    if (!canRevealProfile) {
+      final extraNote = booking.panditName != null && booking.date.isAfter(DateTime.now())
+          ? 'Profile photo becomes visible within 24 hours of the booking once assignment is locked.'
+          : null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DetailRow(
+            icon: Icons.person_rounded,
+            label: booking.isAutoAssigned ? 'Assignment' : 'Requested',
+            value: name,
+          ),
+          if (extraNote != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              extraNote,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
+    final imageProvider = _imageProvider(booking.panditAvatarUrl);
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 24,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          backgroundImage: imageProvider,
+          child: imageProvider == null
+              ? Icon(Icons.person_rounded, color: AppColors.primary)
+              : null,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                booking.panditName ?? 'Assigned pandit',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                booking.location.isOnline
+                    ? 'Pandit profile is visible for live consultation bookings.'
+                    : 'Profile is now visible because the booking is within the final 24 hours.',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static bool _shouldRevealPanditProfile(BookingModel booking) {
+    if (booking.panditId == null || booking.panditName == null) return false;
+    final timeUntilBooking = booking.date.difference(DateTime.now());
+    return timeUntilBooking >= Duration.zero &&
+        timeUntilBooking <= const Duration(hours: 24);
+  }
+
+  static ImageProvider<Object>? _imageProvider(String? avatarUrl) {
+    if (avatarUrl == null || avatarUrl.isEmpty) return null;
+    if (avatarUrl.startsWith('http')) {
+      return CachedNetworkImageProvider(avatarUrl);
+    }
+    if (avatarUrl.startsWith('assets/')) {
+      return AssetImage(avatarUrl);
+    }
+    return null;
   }
 }
 
@@ -478,6 +577,24 @@ class _ProofCard extends StatelessWidget {
       children: [
         if (proof.hasVideo) ...[
           StreamVideoPlayer(videoUrl: proof.videoUrl!),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              try {
+                await downloadFromUrl(
+                  proof.videoUrl!,
+                  fileName: 'pooja-proof-${proof.bookingId}.mp4',
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.toString())),
+                );
+              }
+            },
+            icon: const Icon(Icons.download_rounded),
+            label: const Text('Download Video Proof'),
+          ),
           const SizedBox(height: 12),
         ],
         if (proof.isVerified)

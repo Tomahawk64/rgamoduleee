@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import '../models/consultation_session.dart';
 import '../models/pandit_model.dart';
+import '../models/scheduled_consultation_request.dart';
 
 // ── Session Repository ────────────────────────────────────────────────────────
 //
@@ -38,12 +40,67 @@ abstract class ISessionRepository {
     required String userName,
   });
 
+  /// Returns the currently active session for this user, if any.
+  Future<ConsultationSession?> fetchActiveSessionForUser({
+    required String userId,
+    required String userName,
+  });
+
+  /// Creates a scheduled consultation request that can be accepted,
+  /// rescheduled, or rejected by the pandit.
+  Future<ScheduledConsultationRequest> requestScheduledSession({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+    required DateTime scheduledFor,
+    required bool isPaid,
+    required String? paymentId,
+    String? customerNote,
+  });
+
+  /// List scheduled consultation requests for a user.
+  Future<List<ScheduledConsultationRequest>> fetchUserScheduledRequests(
+      String userId);
+
+  /// List scheduled consultation requests for a pandit.
+  Future<List<ScheduledConsultationRequest>> fetchPanditScheduledRequests(
+      String panditId);
+
+  /// Pandit action on a scheduled request.
+  Future<void> panditRespondToScheduledRequest({
+    required String sessionId,
+    required String action,
+    DateTime? proposedStart,
+    String? note,
+  });
+
+  /// User response when pandit proposes a new time.
+  Future<void> userRespondToProposedTime({
+    required String sessionId,
+    required bool accept,
+    String? note,
+  });
+
   /// Returns a broadcast stream of [SessionEvent]s for the given session.
   /// In production: establishes and returns a WebSocket channel stream.
   Stream<SessionEvent> connect(ConsultationSession session);
 
   /// Send a chat message from the user.
-  Future<void> sendMessage(String sessionId, String text, String senderId);
+  Future<void> sendMessage(
+    String sessionId,
+    String text,
+    String senderId, {
+    String? imageUrl,
+  });
+
+  /// Upload a chat image and return a public URL.
+  Future<String> uploadChatImage({
+    required String sessionId,
+    required String senderId,
+    required Uint8List bytes,
+    required String fileExt,
+  });
 
   /// Request session extension (adds [addMinutes] minutes, triggers payment).
   /// Returns the new canonical [duration_minutes] as confirmed by the server.
@@ -73,6 +130,7 @@ abstract class IPanditRepository {
 /// Swap with `WsSessionRepository` to go live.
 class MockSessionRepository implements ISessionRepository {
   final Map<String, StreamController<SessionEvent>> _controllers = {};
+  final List<ScheduledConsultationRequest> _scheduledRequests = [];
 
   @override
   Future<ConsultationSession> startSession({
@@ -87,6 +145,138 @@ class MockSessionRepository implements ISessionRepository {
       rate: rate,
       userId: userId,
       userName: userName,
+    );
+  }
+
+  @override
+  Future<ConsultationSession?> fetchActiveSessionForUser({
+    required String userId,
+    required String userName,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    return null;
+  }
+
+  @override
+  Future<ScheduledConsultationRequest> requestScheduledSession({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+    required DateTime scheduledFor,
+    required bool isPaid,
+    required String? paymentId,
+    String? customerNote,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    final req = ScheduledConsultationRequest(
+      id: 'sched_${DateTime.now().millisecondsSinceEpoch}',
+      userId: userId,
+      userName: userName,
+      panditId: pandit.id,
+      panditName: pandit.name,
+      status: ConsultationRequestStatus.pending,
+      durationMinutes: rate.duration,
+      amountPaise: rate.totalPaise,
+      scheduledFor: scheduledFor,
+      createdAt: DateTime.now(),
+      customerNote: customerNote,
+      isPaid: isPaid,
+      paymentId: paymentId,
+    );
+    _scheduledRequests.add(req);
+    return req;
+  }
+
+  @override
+  Future<List<ScheduledConsultationRequest>> fetchUserScheduledRequests(
+      String userId) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    return _scheduledRequests.where((r) => r.userId == userId).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  @override
+  Future<List<ScheduledConsultationRequest>> fetchPanditScheduledRequests(
+      String panditId) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    return _scheduledRequests.where((r) => r.panditId == panditId).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  @override
+  Future<void> panditRespondToScheduledRequest({
+    required String sessionId,
+    required String action,
+    DateTime? proposedStart,
+    String? note,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    final i = _scheduledRequests.indexWhere((e) => e.id == sessionId);
+    if (i == -1) return;
+    final current = _scheduledRequests[i];
+    ConsultationRequestStatus status = current.status;
+    DateTime? proposed = current.proposedFor;
+
+    if (action == 'accept') {
+      status = ConsultationRequestStatus.confirmed;
+      proposed = null;
+    } else if (action == 'propose') {
+      status = ConsultationRequestStatus.rescheduleProposed;
+      proposed = proposedStart;
+    } else if (action == 'reject') {
+      status = ConsultationRequestStatus.rejected;
+    }
+
+    _scheduledRequests[i] = ScheduledConsultationRequest(
+      id: current.id,
+      userId: current.userId,
+      userName: current.userName,
+      panditId: current.panditId,
+      panditName: current.panditName,
+      status: status,
+      durationMinutes: current.durationMinutes,
+      amountPaise: current.amountPaise,
+      scheduledFor: current.scheduledFor,
+      createdAt: current.createdAt,
+      proposedFor: proposed,
+      customerNote: current.customerNote,
+      panditNote: note,
+      isPaid: current.isPaid,
+      paymentId: current.paymentId,
+    );
+  }
+
+  @override
+  Future<void> userRespondToProposedTime({
+    required String sessionId,
+    required bool accept,
+    String? note,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    final i = _scheduledRequests.indexWhere((e) => e.id == sessionId);
+    if (i == -1) return;
+    final current = _scheduledRequests[i];
+    _scheduledRequests[i] = ScheduledConsultationRequest(
+      id: current.id,
+      userId: current.userId,
+      userName: current.userName,
+      panditId: current.panditId,
+      panditName: current.panditName,
+      status: accept
+          ? ConsultationRequestStatus.confirmed
+          : ConsultationRequestStatus.refunded,
+      durationMinutes: current.durationMinutes,
+      amountPaise: current.amountPaise,
+      scheduledFor: accept
+          ? (current.proposedFor ?? current.scheduledFor)
+          : current.scheduledFor,
+      createdAt: current.createdAt,
+      proposedFor: null,
+      customerNote: note ?? current.customerNote,
+      panditNote: current.panditNote,
+      isPaid: current.isPaid,
+      paymentId: current.paymentId,
     );
   }
 
@@ -127,7 +317,11 @@ class MockSessionRepository implements ISessionRepository {
 
   @override
   Future<void> sendMessage(
-      String sessionId, String text, String senderId) async {
+    String sessionId,
+    String text,
+    String senderId, {
+    String? imageUrl,
+  }) async {
     final ctrl = _controllers[sessionId];
     if (ctrl == null || ctrl.isClosed) return;
 
@@ -160,6 +354,17 @@ class MockSessionRepository implements ISessionRepository {
         isFromPandit: true,
       ),
     ));
+  }
+
+  @override
+  Future<String> uploadChatImage({
+    required String sessionId,
+    required String senderId,
+    required Uint8List bytes,
+    required String fileExt,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return 'https://example.com/mock/$sessionId/$senderId.${fileExt.toLowerCase()}';
   }
 
   @override

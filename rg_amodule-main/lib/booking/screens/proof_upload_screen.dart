@@ -433,7 +433,7 @@ class _GuidelinesCard extends StatelessWidget {
       'Ensure good lighting and stable recording.',
       'Include beginning, main ritual, and completion.',
       'Avoid recording personal conversations.',
-      'Proof is only visible to the customer after admin review.',
+      'Proof is only visible to the customer after our team verifies the submission and updates them accordingly.',
     ];
 
     return Container(

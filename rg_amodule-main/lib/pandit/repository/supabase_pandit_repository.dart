@@ -24,12 +24,7 @@ class SupabasePanditDashboardRepository
   Future<List<PanditAssignment>> fetchAssignments(String panditId) async {
     final rows = await _db
         .from('bookings')
-        .select('''
-          id, user_id, package_id, package_title, category, booking_date, slot,
-          location, status, amount, created_at,
-          pandit_id, pandit_name, is_paid, pandit_accepted,
-          notes, payment_id, is_auto_assigned
-        ''')
+        .select('*')
         .eq('pandit_id', panditId)
         .order('booking_date', ascending: true);
 

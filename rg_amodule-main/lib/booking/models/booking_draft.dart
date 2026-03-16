@@ -37,9 +37,10 @@ class BookingDraft {
         (loc.city?.isNotEmpty ?? false) &&
         (loc.pincode?.isNotEmpty ?? false);
   }
-  bool get step4Valid => panditOption != null;
+  // Pandit is now always auto-assigned by admin — step 4 removed from wizard.
+  bool get step4Valid => true;
   bool get readyToConfirm =>
-      step0Valid && step1Valid && step2Valid && step3Valid && step4Valid;
+      step0Valid && step1Valid && step2Valid && step3Valid;
 
   BookingDraft copyWith({
     PackageModel?    package,

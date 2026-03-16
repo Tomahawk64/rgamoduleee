@@ -7,6 +7,15 @@ import 'home_models.dart';
 // ── Hero Slides ────────────────────────────────────────────────────────────────
 const List<HeroSlide> kHeroSlides = [
   HeroSlide(
+    title: 'Corporate Business\nPooja Services',
+    subtitle: 'Auspicious rituals tailored for your business growth',
+    icon: Icons.business_center_rounded,
+    imagePath: 'assets/images/image4.jpg',
+    gradient: [Color(0xFF1A3C6E), Color(0xFF2E6DA4)],
+    actionLabel: 'Explore Now',
+    actionRoute: '/packages?category=corporate',
+  ),
+  HeroSlide(
     title: 'Book a Pandit\nfrom ₹499',
     subtitle: 'Experienced pandits for all puja ceremonies',
     icon: Icons.auto_awesome,
@@ -59,10 +68,10 @@ const List<CategoryItem> kCategories = [
     route: '/consultation',
   ),
   CategoryItem(
-    label: 'Vastu',
-    icon: Icons.home_work_rounded,
-    color: Color(0xFF1B5E20),
-    route: '/services',
+    label: 'Special Pooja',
+    icon: Icons.temple_hindu_rounded,
+    color: Color(0xFF8C1D40),
+    route: '/special',
   ),
   CategoryItem(
     label: 'Packages',

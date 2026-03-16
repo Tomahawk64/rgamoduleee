@@ -169,6 +169,11 @@ class AdminBookingRow {
     required this.scheduledAt,
     this.userId,
     this.panditId,
+    this.clientPhone,
+    this.clientEmail,
+    this.timeSlot,
+    this.address,
+    this.userNotes,
   });
 
   final String id;
@@ -182,39 +187,73 @@ class AdminBookingRow {
   final DateTime scheduledAt;
   final String? userId;
   final String? panditId;
+  // Extra user-contact and booking-detail fields
+  final String? clientPhone;
+  final String? clientEmail;
+  final String? timeSlot;
+  final String? address;
+  final String? userNotes;
 
   String get formattedDate {
     final d = scheduledAt;
-    final months = [
+    const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
 
-  AdminBookingRow copyWith({String? panditName, String? panditId}) =>
+  AdminBookingRow copyWith({
+    String? panditName,
+    String? panditId,
+    BookingStatus? status,
+    bool? isPaid,
+    String? clientPhone,
+    String? clientEmail,
+    String? timeSlot,
+    String? address,
+    String? userNotes,
+  }) =>
       AdminBookingRow(
         id: id,
         packageTitle: packageTitle,
         clientName: clientName,
         panditName: panditName ?? this.panditName,
-        status: status,
+        status: status ?? this.status,
         amount: amount,
-        isPaid: isPaid,
+        isPaid: isPaid ?? this.isPaid,
         isOnline: isOnline,
         scheduledAt: scheduledAt,
         userId: userId,
         panditId: panditId ?? this.panditId,
+        clientPhone: clientPhone ?? this.clientPhone,
+        clientEmail: clientEmail ?? this.clientEmail,
+        timeSlot: timeSlot ?? this.timeSlot,
+        address: address ?? this.address,
+        userNotes: userNotes ?? this.userNotes,
       );
 }
 
 // ── Consultation Row ──────────────────────────────────────────────────────────
 
-enum AdminSessionStatus { active, ended, expired, refunded }
+enum AdminSessionStatus {
+  pending,
+  confirmed,
+  rescheduleProposed,
+  rejected,
+  active,
+  ended,
+  expired,
+  refunded,
+}
 
 extension AdminSessionStatusX on AdminSessionStatus {
   String get label {
     switch (this) {
+      case AdminSessionStatus.pending: return 'Pending';
+      case AdminSessionStatus.confirmed: return 'Confirmed';
+      case AdminSessionStatus.rescheduleProposed: return 'Reschedule Proposed';
+      case AdminSessionStatus.rejected: return 'Rejected';
       case AdminSessionStatus.active:   return 'Active';
       case AdminSessionStatus.ended:    return 'Ended';
       case AdminSessionStatus.expired:  return 'Expired';
@@ -224,6 +263,10 @@ extension AdminSessionStatusX on AdminSessionStatus {
 
   Color get color {
     switch (this) {
+      case AdminSessionStatus.pending: return const Color(0xFFF59E0B);
+      case AdminSessionStatus.confirmed: return const Color(0xFF0EA5E9);
+      case AdminSessionStatus.rescheduleProposed: return const Color(0xFF3B82F6);
+      case AdminSessionStatus.rejected: return const Color(0xFFEF4444);
       case AdminSessionStatus.active:   return const Color(0xFF10B981);
       case AdminSessionStatus.ended:    return const Color(0xFF6B7280);
       case AdminSessionStatus.expired:  return const Color(0xFFF59E0B);

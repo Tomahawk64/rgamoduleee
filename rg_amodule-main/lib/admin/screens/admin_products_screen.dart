@@ -17,6 +17,35 @@ const _kCategories = [
   'spiritual',
 ];
 
+String _normalizeProductCategory(String? raw) {
+  final value = (raw ?? '').trim().toLowerCase();
+  switch (value) {
+    case 'puja-kit':
+    case 'puja kit':
+    case 'kit':
+      return 'kit';
+    case 'rudraksha':
+    case 'rudraksh':
+      return 'rudraksh';
+    case 'spiritual':
+    case 'yantra':
+      return value;
+    case '':
+      return 'spiritual';
+    default:
+      return value;
+  }
+}
+
+List<String> _formCategoriesForValue(String currentValue) {
+  final categories = _kCategories.where((c) => c != 'all').toList();
+  final normalized = _normalizeProductCategory(currentValue);
+  if (!categories.contains(normalized)) {
+    categories.add(normalized);
+  }
+  return categories.toSet().toList()..sort();
+}
+
 class AdminProductsScreen extends ConsumerStatefulWidget {
   const AdminProductsScreen({super.key});
 
@@ -54,7 +83,8 @@ class _AdminProductsScreenState
 
     final q = _search.toLowerCase();
     final products = state.products.where((p) {
-      final matchCat = _category == 'all' || p.category == _category;
+        final matchCat =
+          _category == 'all' || _normalizeProductCategory(p.category) == _category;
       final matchSearch = q.isEmpty ||
           p.name.toLowerCase().contains(q) ||
           p.category.toLowerCase().contains(q);
@@ -135,7 +165,7 @@ class _AdminProductsScreenState
                   label: Text(
                     cat == 'all'
                         ? 'All (${state.products.length})'
-                        : '${cat[0].toUpperCase()}${cat.substring(1)} (${state.products.where((p) => p.category == cat).length})',
+                        : '${cat[0].toUpperCase()}${cat.substring(1)} (${state.products.where((p) => _normalizeProductCategory(p.category) == cat).length})',
                   ),
                   selected: selected,
                   onSelected: (_) => setState(() => _category = cat),
@@ -196,18 +226,18 @@ class _AdminProductsScreenState
       BuildContext context, WidgetRef ref, AdminProduct p) {
     showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Product'),
         content: Text('Delete "${p.name}"? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: AppColors.error),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Delete'),
           ),
         ],
@@ -341,7 +371,7 @@ class _ProductCard extends StatelessWidget {
                 Switch(
                   value: product.isActive,
                   onChanged: onToggle,
-                  activeColor: AppColors.success,
+                  activeThumbColor: AppColors.success,
                   materialTapTargetSize:
                       MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -490,7 +520,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     _stock      = TextEditingController(
         text: p != null ? p.stock.toString() : '');
     _imageUrl   = TextEditingController(text: p?.imageUrl ?? '');
-    _category   = p?.category ?? 'spiritual';
+    _category   = _normalizeProductCategory(p?.category);
     _isBestSeller = p?.isBestSeller ?? false;
     _isActive   = p?.isActive ?? true;
   }
@@ -533,6 +563,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
+    final categoryItems = _formCategoriesForValue(_category);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -625,10 +656,12 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                                       RegExp(r'^\d*\.?\d{0,2}')),
                                 ],
                                 validator: (v) {
-                                  if (v == null || v.isEmpty)
+                                  if (v == null || v.isEmpty) {
                                     return 'Required';
-                                  if ((double.tryParse(v) ?? -1) <= 0)
+                                  }
+                                  if ((double.tryParse(v) ?? -1) <= 0) {
                                     return 'Must be > 0';
+                                  }
                                   return null;
                                 },
                                 decoration: _decor('0.00'),
@@ -668,8 +701,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                     _label('Category'),
                     DropdownButtonFormField<String>(
                       value: _category,
-                      items: _kCategories
-                          .where((c) => c != 'all')
+                      items: categoryItems
                           .map((c) => DropdownMenuItem(
                               value: c,
                               child: Text(
@@ -699,7 +731,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                       title: const Text('Best Seller',
                           style: TextStyle(fontSize: 14)),
                       contentPadding: EdgeInsets.zero,
-                      activeColor: const Color(0xFFF59E0B),
+                      activeThumbColor: const Color(0xFFF59E0B),
                     ),
                     SwitchListTile(
                       value: _isActive,
@@ -708,7 +740,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                       title: const Text('Active (visible to users)',
                           style: TextStyle(fontSize: 14)),
                       contentPadding: EdgeInsets.zero,
-                      activeColor: AppColors.success,
+                      activeThumbColor: AppColors.success,
                     ),
                     const SizedBox(height: 24),
 

@@ -25,6 +25,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
+  bool _staySignedIn = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async {
+      final value =
+          await ref.read(authProvider.notifier).getStaySignedInPreference();
+      if (mounted) {
+        setState(() => _staySignedIn = value);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -39,6 +52,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
+    await ref
+        .read(authProvider.notifier)
+        .setStaySignedInPreference(_staySignedIn);
     await ref.read(authProvider.notifier).login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
@@ -340,6 +356,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                             return null;
                                           },
                                           onFieldSubmitted: (_) => _submit(),
+                                        ),
+
+                                        Row(
+                                          children: [
+                                            Checkbox(
+                                              value: _staySignedIn,
+                                              fillColor:
+                                                  const WidgetStatePropertyAll(
+                                                AppColors.primary,
+                                              ),
+                                              onChanged: isLoading
+                                                  ? null
+                                                  : (value) {
+                                                      if (value == null) {
+                                                        return;
+                                                      }
+                                                      setState(() =>
+                                                          _staySignedIn =
+                                                              value);
+                                                    },
+                                            ),
+                                            Expanded(
+                                              child: GestureDetector(
+                                                onTap: isLoading
+                                                    ? null
+                                                    : () => setState(() =>
+                                                        _staySignedIn =
+                                                            !_staySignedIn),
+                                                child: Text(
+                                                  'Stay signed in on this device',
+                                                  style: GoogleFonts.inter(
+                                                    color: AppColors
+                                                        .textSecondary,
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
 
                                         // Forgot password

@@ -5,6 +5,7 @@ import '../../core/providers/supabase_provider.dart';
 import '../controllers/consultation_controller.dart';
 import '../models/consultation_session.dart';
 import '../models/pandit_model.dart';
+import '../models/scheduled_consultation_request.dart';
 import '../repository/consultation_repository.dart';
 import '../repository/ws_session_repository.dart';
 
@@ -76,5 +77,23 @@ final sessionProvider = StateNotifierProvider.family
     final ctrl = SessionController(session: session, repository: repo);
     ctrl.init();
     return ctrl;
+  },
+);
+
+final userScheduledConsultationsProvider =
+    FutureProvider.family<List<ScheduledConsultationRequest>, String>(
+  (ref, userId) async {
+    return ref
+        .watch(sessionRepositoryProvider)
+        .fetchUserScheduledRequests(userId);
+  },
+);
+
+final panditScheduledConsultationsProvider =
+    FutureProvider.family<List<ScheduledConsultationRequest>, String>(
+  (ref, panditId) async {
+    return ref
+        .watch(sessionRepositoryProvider)
+        .fetchPanditScheduledRequests(panditId);
   },
 );

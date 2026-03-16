@@ -203,6 +203,19 @@ class AdminController extends StateNotifier<AdminState> {
     }
   }
 
+  Future<void> markAsPaid(String bookingId) async {
+    try {
+      final updated = await _repo.markAsPaid(bookingId);
+      state = state.copyWith(
+        bookings: state.bookings
+            .map((b) => b.id == updated.id ? updated : b)
+            .toList(),
+      );
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
   // ── Users ─────────────────────────────────────────────────────────────────
 
   Future<void> loadUsers() async {

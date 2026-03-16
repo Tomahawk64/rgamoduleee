@@ -143,8 +143,10 @@ class BookingModel {
     required this.status,
     required this.amount,
     required this.createdAt,
+    this.specialPoojaId,
     this.panditId,
     this.panditName,
+    this.panditAvatarUrl,
     this.isPaid = false,
     this.paymentId,
     this.notes,
@@ -154,6 +156,7 @@ class BookingModel {
   final String id;
   final String userId;
   final String packageId;
+  final String? specialPoojaId;
   final String packageTitle;
   final String category;
   final DateTime date;
@@ -164,6 +167,7 @@ class BookingModel {
   final DateTime createdAt;
   final String? panditId;
   final String? panditName;
+  final String? panditAvatarUrl;
   final bool isPaid;
   final String? paymentId;
   final String? notes;
@@ -195,6 +199,7 @@ class BookingModel {
         'id':            id,
         'user_id':       userId,
         'package_id':    packageId,
+        'special_pooja_id': specialPoojaId,
         'package_title': packageTitle,
         'category':      category,
         'booking_date':   date.toIso8601String(),
@@ -222,7 +227,8 @@ class BookingModel {
   factory BookingModel.fromJson(Map<String, dynamic> j) => BookingModel(
         id:            j['id'] as String,
         userId:        j['user_id'] as String,
-        packageId:     j['package_id'] as String,
+      packageId:     (j['package_id'] ?? j['special_pooja_id'] ?? '') as String,
+      specialPoojaId: j['special_pooja_id'] as String?,
         packageTitle:  j['package_title'] as String,
         category:      j['category'] as String? ?? '',
         date:          DateTime.parse(j['booking_date'] as String),
@@ -233,17 +239,19 @@ class BookingModel {
         createdAt:     DateTime.parse(j['created_at'] as String),
         panditId:      j['pandit_id'] as String?,
         panditName:    j['pandit_name'] as String?,
+        panditAvatarUrl: j['pandit_avatar_url'] as String?,
         isPaid:        j['is_paid'] as bool? ?? false,
         paymentId:     j['payment_id'] as String?,
         notes:         j['notes'] as String?,
         isAutoAssigned: j['is_auto_assigned'] as bool? ?? false,
       );
 
-  BookingModel copyWith({BookingStatus? status, String? panditId, String? panditName, bool? isPaid, String? paymentId}) =>
+  BookingModel copyWith({BookingStatus? status, String? panditId, String? panditName, String? panditAvatarUrl, bool? isPaid, String? paymentId}) =>
       BookingModel(
         id:             id,
         userId:         userId,
         packageId:      packageId,
+        specialPoojaId: specialPoojaId,
         packageTitle:   packageTitle,
         category:       category,
         date:           date,
@@ -254,6 +262,7 @@ class BookingModel {
         createdAt:      createdAt,
         panditId:       panditId ?? this.panditId,
         panditName:     panditName ?? this.panditName,
+        panditAvatarUrl: panditAvatarUrl ?? this.panditAvatarUrl,
         isPaid:         isPaid ?? this.isPaid,
         paymentId:      paymentId ?? this.paymentId,
         notes:          notes,

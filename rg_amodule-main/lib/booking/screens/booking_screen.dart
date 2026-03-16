@@ -17,6 +17,7 @@ class BookingScreen extends ConsumerStatefulWidget {
 class _BookingScreenState extends ConsumerState<BookingScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabCtrl;
+  int _selectedTab = 0;
 
   @override
   void initState() {
@@ -40,51 +41,43 @@ class _BookingScreenState extends ConsumerState<BookingScreen>
     final userId = ref.watch(currentUserProvider)?.id ?? '';
 
     return Scaffold(
-      body: NestedScrollView(
-        headerSliverBuilder: (_, _) => [
-          SliverAppBar(
-            pinned: true,
-            title: const Text('My Bookings',
-                style: TextStyle(fontWeight: FontWeight.w800)),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: () => ref
-                    .read(bookingListProvider.notifier)
-                    .refresh(userId),
-              ),
-            ],
-            bottom: TabBar(
-              controller: _tabCtrl,
-              tabs: [
-                Tab(text: 'Upcoming (${state.upcoming.length})'),
-                Tab(text: 'Past (${state.past.length})'),
-              ],
-            ),
+      appBar: AppBar(
+        title: const Text('My Bookings',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: state.loading
+                ? null
+                : () => ref.read(bookingListProvider.notifier).refresh(userId),
           ),
         ],
-        body: state.loading
-            ? const Center(child: CircularProgressIndicator())
-            : state.error != null
-                ? _ErrorView(
-                    error: state.error!,
-                    onRetry: () => ref
-                        .read(bookingListProvider.notifier)
-                        .refresh(userId),
-                  )
-                : TabBarView(
-                    controller: _tabCtrl,
-                    children: [
-                      _BookingList(
-                          bookings: state.upcoming,
-                          emptyMessage:
-                              'No upcoming bookings.\nTap + to start one!'),
-                      _BookingList(
-                          bookings: state.past,
-                          emptyMessage: 'No past bookings yet.'),
-                    ],
-                  ),
+        bottom: TabBar(
+          controller: _tabCtrl,
+          onTap: (index) => setState(() => _selectedTab = index),
+          tabs: [
+            Tab(text: 'Upcoming (${state.upcoming.length})'),
+            Tab(text: 'Past (${state.past.length})'),
+          ],
+        ),
       ),
+      body: state.loading
+          ? const Center(child: CircularProgressIndicator())
+          : state.error != null
+              ? _ErrorView(
+                  error: state.error!,
+                  onRetry: () =>
+                      ref.read(bookingListProvider.notifier).refresh(userId),
+                )
+              : (_selectedTab == 0
+                  ? _BookingList(
+                      bookings: state.upcoming,
+                      emptyMessage: 'No upcoming bookings.\nTap + to start one!',
+                    )
+                  : _BookingList(
+                      bookings: state.past,
+                      emptyMessage: 'No past bookings yet.',
+                    )),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/booking/wizard'),
         icon: const Icon(Icons.add_rounded),
@@ -131,113 +124,137 @@ class _BookingCard extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 2,
-      child: InkWell(
-        onTap: () => context.push('/booking/${booking.id}'),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => context.push('/booking/${booking.id}'),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.temple_hindu_rounded,
+                          color: cs.onPrimaryContainer),
                     ),
-                    child: Icon(Icons.temple_hindu_rounded,
-                        color: cs.onPrimaryContainer),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(booking.packageTitle,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            booking.packageTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: tt.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        Text(booking.category,
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            booking.category,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: tt.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant)),
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _StatusChip(status: booking.status),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  children: [
+                    _InfoItem(
+                        icon: Icons.event_rounded,
+                        text: booking.formattedDate),
+                    _InfoItem(
+                        icon: Icons.schedule_rounded,
+                        text: booking.slot.label),
+                    _InfoItem(
+                      icon: booking.location.isOnline
+                          ? Icons.videocam_rounded
+                          : Icons.location_on_rounded,
+                      text: booking.location.isOnline
+                          ? 'Online'
+                          : (booking.location.city ?? 'On-site'),
+                    ),
+                    if (booking.panditName != null && booking.panditName!.isNotEmpty)
+                      _InfoItem(
+                          icon: Icons.person_rounded,
+                          text: booking.panditName!),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      '₹${booking.amount.toStringAsFixed(0)}',
+                      style: tt.titleSmall?.copyWith(
+                          color: cs.primary, fontWeight: FontWeight.w800),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (booking.status.isActive)
+                          TextButton(
+                            onPressed: () => _confirmCancel(context, ref),
+                            style: TextButton.styleFrom(
+                                foregroundColor: cs.error,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 12)),
+                            child: const Text('Cancel'),
+                          ),
+                        if (booking.status.isActive) const SizedBox(width: 4),
+                        OutlinedButton(
+                          onPressed: () => context.push('/booking/${booking.id}'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 40),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 6),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('View'),
+                        ),
                       ],
                     ),
-                  ),
-                  _StatusChip(status: booking.status),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Divider(height: 1),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  _InfoItem(
-                      icon: Icons.event_rounded,
-                      text: booking.formattedDate),
-                  const SizedBox(width: 16),
-                  _InfoItem(
-                      icon: Icons.schedule_rounded,
-                      text: booking.slot.label),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  _InfoItem(
-                    icon: booking.location.isOnline
-                        ? Icons.videocam_rounded
-                        : Icons.location_on_rounded,
-                    text: booking.location.isOnline
-                        ? 'Online'
-                        : (booking.location.city ?? 'On-site'),
-                  ),
-                  if (booking.panditName != null) ...[
-                    const SizedBox(width: 16),
-                    _InfoItem(
-                        icon: Icons.person_rounded,
-                        text: booking.panditName!),
                   ],
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Text(
-                    '₹${booking.amount.toStringAsFixed(0)}',
-                    style: tt.titleSmall?.copyWith(
-                        color: cs.primary, fontWeight: FontWeight.w800),
-                  ),
-                  const Spacer(),
-                  if (booking.status.isActive)
-                    TextButton(
-                      onPressed: () => _confirmCancel(context, ref),
-                      style: TextButton.styleFrom(
-                          foregroundColor: cs.error,
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 12)),
-                      child: const Text('Cancel'),
-                    ),
-                  const SizedBox(width: 4),
-                  OutlinedButton(
-                    onPressed: () => context.push('/booking/${booking.id}'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('View'),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -248,16 +265,16 @@ class _BookingCard extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Cancel Booking'),
         content: const Text(
             'Are you sure you want to cancel this booking? This cannot be undone.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('No')),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             style: FilledButton.styleFrom(backgroundColor: cs.error),
             child: const Text('Cancel Booking'),
           ),

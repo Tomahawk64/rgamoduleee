@@ -33,6 +33,7 @@ A production-ready Religious Services Marketplace + Live Consultation Platform b
 | Admin dashboard (stats, user management, booking oversight) | ✅ |
 | Pandit earnings dashboard | ✅ |
 | Payment abstraction (Mock in Phase 1, Razorpay in Phase 2) | ✅ |
+| In-app notifications for booking, payment, and consultation lifecycle events | ✅ |
 | Full RLS security on all tables | ✅ |
 | GitHub Actions CI (analyze → test → build) | ✅ |
 
@@ -117,6 +118,7 @@ supabase db push
 #   supabase/migrations/001_initial_schema.sql
 #   supabase/migrations/002_rls_policies.sql
 #   supabase/migrations/003_rpc_functions.sql
+#   ...then all later numbered migrations, including 009_allow_special_pooja_bookings.sql
 ```
 
 ### 4 — Run the app
@@ -172,6 +174,10 @@ test/
 | `001_initial_schema.sql` | 13 tables: profiles, pandit_details, packages, special_poojas, bookings, booking_proofs, consultations, messages, consultation_rates, transactions, addresses, products, orders, package_reviews |
 | `002_rls_policies.sql` | RLS on all tables. `get_my_role()` SECURITY DEFINER prevents recursion |
 | `003_rpc_functions.sql` | `create_booking` (advisory lock), `get_booked_slots`, `update_booking_status`, `assign_pandit_to_booking`, `start/end_consultation_session`, `get_admin_stats`, `get_pandit_earnings` |
+| `009_allow_special_pooja_bookings.sql` | Makes `bookings.package_id` nullable so special-pooja bookings can use `special_pooja_id` without a regular package row |
+| `010_create_booking_payment_fields.sql` | Extends `create_booking` RPC to atomically store `is_paid` and `payment_id`, preventing client-side RLS update failures |
+| `011_consultation_scheduling_and_chat_media.sql` | Adds scheduled consultation lifecycle (`pending`, `confirmed`, `reschedule_proposed`, `rejected`) RPCs and enables chat image attachments via `messages.image_url` + storage bucket policies |
+| `012_notifications_and_profile_media.sql` | Adds in-app notifications, notification RLS/RPC helpers, and the public `profile-images` bucket used by profile avatar uploads |
 
 ### Key design decisions
 
@@ -210,7 +216,7 @@ docker compose down
 1. Create project at [supabase.com](https://supabase.com)
 2. Run migrations: `supabase db push`
 3. Enable Email + OTP auth providers
-4. Create Storage buckets: `booking-proofs` (private), `avatars` (public)
+4. Create Storage buckets: `booking-proofs` (private), `consultation-chat-media` (public), `profile-images` (public)
 5. Update `.env` with production keys
 
 ---

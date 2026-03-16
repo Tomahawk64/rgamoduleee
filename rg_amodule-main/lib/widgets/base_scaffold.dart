@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../auth/providers/auth_provider.dart';
+import '../core/router/app_router.dart';
 import '../models/role_enum.dart';
 import '../core/theme/app_colors.dart';
 
@@ -87,6 +89,7 @@ class BaseScaffold extends ConsumerWidget {
               onSelected: (value) async {
                 if (value == 'logout') {
                   await ref.read(authProvider.notifier).logout();
+                  if (context.mounted) context.go(Routes.login);
                 }
               },
             ),

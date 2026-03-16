@@ -23,8 +23,8 @@
 //
 // ── Slot-uniqueness constraint ────────────────────────────────────────────────
 //   create unique index bookings_slot_unique_idx
-//     on bookings(package_id, booking_date, slot_id)
-//     where status != 'cancelled';
+//     on bookings(pandit_id, booking_date, slot_id)
+//     where status != 'cancelled' and pandit_id is not null;
 //
 //   PostgrestException.code == '23505' on violation → SlotConflictException.
 //
@@ -38,7 +38,10 @@ import 'dart:math';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../account/models/app_notification.dart';
+import '../../account/repository/notifications_repository.dart';
 import '../../packages/models/package_model.dart';
+import '../../special_poojas/models/special_pooja_model.dart';
 import '../models/booking_draft.dart';
 import '../models/booking_model.dart';
 import '../models/booking_status.dart';
@@ -48,6 +51,18 @@ import '../models/time_slot_model.dart';
 
 /// Default page size for paginated list queries.
 const kDefaultPageSize = 20;
+
+TimeSlot _specialPoojaSlotForDuration(int durationMinutes) {
+  final estimatedHours = max(1, (durationMinutes / 60).ceil());
+  final endHour = min(23, 6 + estimatedHours);
+  return TimeSlot(
+    id: 'special_pooja_online',
+    startHour: 6,
+    startMinute: 0,
+    endHour: endHour,
+    endMinute: 0,
+  );
+}
 
 // ── Exceptions ────────────────────────────────────────────────────────────────
 
@@ -60,7 +75,8 @@ class BookingException implements Exception {
   String toString() => message;
 }
 
-/// Thrown when the unique index on (package_id, booking_date, slot_id) is violated.
+/// Thrown when the unique index on (pandit_id, booking_date, slot_id)
+/// is violated.
 class SlotConflictException extends BookingException {
   const SlotConflictException()
       : super(
@@ -84,14 +100,29 @@ abstract class IBookingRepository {
     int pageSize = kDefaultPageSize,
   });
 
-  /// Slot IDs already taken for [date] + [packageId] (non-cancelled).
-  Future<Set<String>> getBookedSlotIds(DateTime date, String packageId);
+  /// Slot IDs already taken for [date] + [packageId] by [panditId]
+  /// (non-cancelled). When [panditId] is null, no slot is blocked.
+  Future<Set<String>> getBookedSlotIds(
+    DateTime date,
+    String packageId, {
+    String? panditId,
+  });
 
   /// Creates a booking from [draft] for [userId].
   /// Throws [SlotConflictException] on unique constraint violation.
   Future<BookingModel> createBooking({
     required BookingDraft draft,
     required String userId,
+  });
+
+  /// Creates an online special-pooja booking, marks it paid, and stores the
+  /// corresponding payment reference for admin follow-up.
+  Future<BookingModel> createSpecialPoojaBooking({
+    required SpecialPoojaModel pooja,
+    required DateTime date,
+    required String userId,
+    required String notes,
+    required String paymentId,
   });
 
   /// Cancels a booking. Throws [BookingException] if already final.
@@ -113,6 +144,11 @@ class SupabaseBookingRepository implements IBookingRepository {
 
   final SupabaseClient _client;
 
+  static const _bookingSelect = '''
+    *,
+    pandit:profiles!bookings_pandit_id_fkey(full_name, avatar_url)
+  ''';
+
   @override
   Future<List<BookingModel>> getBookingsForUser(
     String userId, {
@@ -123,7 +159,7 @@ class SupabaseBookingRepository implements IBookingRepository {
       final offset = page * pageSize;
       final rows = await _client
           .from('bookings')
-          .select('*')
+          .select(_bookingSelect)
           .eq('user_id', userId)
           .order('created_at', ascending: false)
           .range(offset, offset + pageSize - 1);
@@ -143,7 +179,7 @@ class SupabaseBookingRepository implements IBookingRepository {
       final offset = page * pageSize;
       final rows = await _client
           .from('bookings')
-          .select('*')
+          .select(_bookingSelect)
           .eq('pandit_id', panditId)
           .order('created_at', ascending: false)
           .range(offset, offset + pageSize - 1);
@@ -158,15 +194,22 @@ class SupabaseBookingRepository implements IBookingRepository {
   Future<Set<String>> getBookedSlotIds(
     DateTime date,
     String packageId,
+    {
+    String? panditId,
+  }
   ) async {
     try {
-      final rows = await _client
-          .from('bookings')
-          .select('slot_id')
-          .eq('package_id', packageId)
-          .eq('booking_date', _fmtDate(date))
-          .neq('status', BookingStatus.cancelled.dbValue);
-      return {for (final r in rows) r['slot_id'] as String};
+      final packageUuid = _toUuidOrNull(packageId);
+      if (packageUuid == null) return {};
+
+      final result = await _client.rpc('get_booked_slots', params: {
+        'p_package_id': packageUuid,
+        'p_booking_date': _fmtDate(date),
+        'p_pandit_id': _toUuidOrNull(panditId),
+      });
+
+      final slots = (result as List?)?.cast<String>() ?? const <String>[];
+      return slots.toSet();
     } on PostgrestException catch (e) {
       throw BookingException(
           'Failed to fetch slot availability: ${e.message}');
@@ -227,10 +270,12 @@ class SupabaseBookingRepository implements IBookingRepository {
       final bookingId = data['booking_id'] as String;
       final fetched = await _client
           .from('bookings')
-          .select('*')
+          .select(_bookingSelect)
           .eq('id', bookingId)
           .single();
-      return _rowToModel(fetched);
+        final booking = _rowToModel(fetched);
+        await _notifyBookingCreated(booking);
+        return booking;
     } on SlotConflictException {
       rethrow;
     } on BookingException {
@@ -238,6 +283,91 @@ class SupabaseBookingRepository implements IBookingRepository {
     } on PostgrestException catch (e) {
       if (e.code == '23505') throw const SlotConflictException();
       throw BookingException('Failed to create booking: ${e.message}');
+    }
+  }
+
+  @override
+  Future<BookingModel> createSpecialPoojaBooking({
+    required SpecialPoojaModel pooja,
+    required DateTime date,
+    required String userId,
+    required String notes,
+    required String paymentId,
+  }) async {
+    final specialPoojaUuid = _toUuidOrNull(pooja.id);
+    if (specialPoojaUuid == null) {
+      throw const BookingException(
+        'Selected special pooja is not synced with backend. Please refresh and try again.',
+      );
+    }
+
+    final slot = _specialPoojaSlotForDuration(pooja.durationMinutes);
+
+    try {
+      final result = await _client.rpc('create_booking', params: {
+        'p_package_id': null,
+        'p_special_pooja_id': specialPoojaUuid,
+        'p_package_title': pooja.title,
+        'p_category': 'Special Pooja',
+        'p_booking_date': _fmtDate(date),
+        'p_slot_id': slot.id,
+        'p_slot': slot.toJson(),
+        'p_location': const BookingLocation(
+          isOnline: true,
+          meetLink: 'Temple livestream link will be shared once our team finalizes the session details.',
+        ).toJson(),
+        'p_pandit_id': null,
+        'p_amount': pooja.price,
+        'p_notes': notes,
+        'p_is_auto_assign': true,
+        'p_is_paid': true,
+        'p_payment_id': paymentId,
+      });
+
+      final data = result as Map<String, dynamic>;
+      if (data['error'] != null) {
+        throw BookingException(data['error'] as String);
+      }
+
+      final bookingId = data['booking_id'] as String;
+      final fetched = await _client
+          .from('bookings')
+          .select(_bookingSelect)
+          .eq('id', bookingId)
+          .single();
+      final booking = _rowToModel(fetched);
+      await _createNotification(
+        userId: userId,
+        type: AppNotificationType.paymentCompleted,
+        title: 'Payment completed',
+        body: 'Payment received for ${pooja.title}.',
+        entityType: 'booking',
+        entityId: booking.id,
+      );
+      await _createNotification(
+        userId: userId,
+        type: AppNotificationType.bookingRequested,
+        title: 'Special pooja booked',
+        body: '${pooja.title} was booked for ${booking.formattedDate}.',
+        entityType: 'booking',
+        entityId: booking.id,
+      );
+      return booking;
+    } on BookingException {
+      rethrow;
+    } on PostgrestException catch (e) {
+      if ((e.message).contains('null value in column "package_id"')) {
+        throw const BookingException(
+          'Special pooja booking requires the latest database migration. Apply supabase/migrations/009_allow_special_pooja_bookings.sql and try again.',
+        );
+      }
+      if ((e.message).contains('function public.create_booking') &&
+          (e.message).contains('p_is_paid')) {
+        throw const BookingException(
+          'Special pooja payment flow requires the latest RPC migration. Apply supabase/migrations/010_create_booking_payment_fields.sql and try again.',
+        );
+      }
+      throw BookingException('Failed to create special pooja booking: ${e.message}');
     }
   }
 
@@ -272,10 +402,12 @@ class SupabaseBookingRepository implements IBookingRepository {
         // Fetch updated row so caller gets full BookingModel.
       final fetched = await _client
           .from('bookings')
-          .select('*')
+          .select(_bookingSelect)
           .eq('id', bookingId)
           .single();
-      return _rowToModel(fetched);
+        final booking = _rowToModel(fetched);
+        await _notifyBookingStatusChanged(booking, newStatus);
+        return booking;
     } on BookingException {
       rethrow;
     } on PostgrestException catch (e) {
@@ -293,11 +425,13 @@ class SupabaseBookingRepository implements IBookingRepository {
       // Extract pandit name from the joined profiles row (if present).
       final panditJoin = row['pandit'] as Map<String, dynamic>?;
       final panditName = panditJoin?['full_name'] as String?;
+      final panditAvatarUrl = panditJoin?['avatar_url'] as String?;
       // Build a clean row without the nested join object so fromJson
       // doesn't trip over the unexpected key.
       final cleanRow = Map<String, dynamic>.from(row)
         ..remove('pandit')
-        ..['pandit_name'] = panditName;
+        ..['pandit_name'] = panditName
+        ..['pandit_avatar_url'] = panditAvatarUrl;
       return BookingModel.fromJson(cleanRow);
     } catch (e, st) {
       // Silently rethrow — no console output in production.
@@ -322,6 +456,109 @@ class SupabaseBookingRepository implements IBookingRepository {
         r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
     return RegExp(uuidPattern, caseSensitive: false).hasMatch(id) ? id : null;
   }
+
+  Future<void> _notifyBookingCreated(BookingModel booking) async {
+    await _createNotification(
+      userId: booking.userId,
+      type: AppNotificationType.bookingRequested,
+      title: 'Booking requested',
+      body: '${booking.packageTitle} was requested for ${booking.formattedDate}.',
+      entityType: 'booking',
+      entityId: booking.id,
+    );
+
+    if (!booking.isPaid) {
+      await _createNotification(
+        userId: booking.userId,
+        type: AppNotificationType.paymentPending,
+        title: 'Payment pending',
+        body: 'Payment is pending for ${booking.packageTitle}.',
+        entityType: 'booking',
+        entityId: booking.id,
+      );
+    }
+
+    if (booking.panditId != null && booking.panditId!.isNotEmpty) {
+      await _createNotification(
+        userId: booking.panditId!,
+        type: AppNotificationType.bookingRequested,
+        title: 'New booking request',
+        body: 'A devotee requested ${booking.packageTitle} on ${booking.formattedDate}.',
+        entityType: 'booking',
+        entityId: booking.id,
+      );
+    }
+  }
+
+  Future<void> _notifyBookingStatusChanged(
+    BookingModel booking,
+    BookingStatus status,
+  ) async {
+    switch (status) {
+      case BookingStatus.pending:
+        return;
+      case BookingStatus.confirmed:
+        await _createNotification(
+          userId: booking.userId,
+          type: AppNotificationType.bookingConfirmed,
+          title: 'Booking confirmed',
+          body: '${booking.packageTitle} has been confirmed.',
+          entityType: 'booking',
+          entityId: booking.id,
+        );
+      case BookingStatus.assigned:
+        if (booking.panditName != null) {
+          await _createNotification(
+            userId: booking.userId,
+            type: AppNotificationType.bookingAssigned,
+            title: 'Pandit assigned',
+            body: '${booking.panditName} has been assigned to ${booking.packageTitle}.',
+            entityType: 'booking',
+            entityId: booking.id,
+          );
+        }
+      case BookingStatus.completed:
+        await _createNotification(
+          userId: booking.userId,
+          type: AppNotificationType.bookingConfirmed,
+          title: 'Booking completed',
+          body: '${booking.packageTitle} has been marked completed.',
+          entityType: 'booking',
+          entityId: booking.id,
+        );
+      case BookingStatus.cancelled:
+        await _createNotification(
+          userId: booking.userId,
+          type: AppNotificationType.bookingCancelled,
+          title: 'Booking cancelled',
+          body: '${booking.packageTitle} was cancelled.',
+          entityType: 'booking',
+          entityId: booking.id,
+        );
+    }
+  }
+
+  Future<void> _createNotification({
+    required String userId,
+    required AppNotificationType type,
+    required String title,
+    required String body,
+    String? entityType,
+    String? entityId,
+  }) async {
+    try {
+      await SupabaseNotificationsRepository(_client).createNotification(
+        userId: userId,
+        type: type,
+        title: title,
+        body: body,
+        entityType: entityType,
+        entityId: entityId,
+      );
+    } catch (_) {
+      // Notifications are best-effort only.
+    }
+  }
 }
 
 // ── MockBookingRepository ─────────────────────────────────────────────────────
@@ -332,13 +569,6 @@ class MockBookingRepository implements IBookingRepository {
   MockBookingRepository();
 
   final List<BookingModel> _store = List.from(_seedBookings);
-
-  /// Key format: `"YYYY-MM-DD_slotId"` → set of packageIds booked there.
-  final Map<String, Set<String>> _bookedSlotKeys = {
-    '${_todayStr()}_slot_1000': {'pkg001'},
-    '${_tomorrowStr()}_slot_0800': {'pkg001', 'pkg003'},
-    '${_tomorrowStr()}_slot_0700': {'pkg002'},
-  };
 
   @override
   Future<List<BookingModel>> getBookingsForUser(
@@ -376,16 +606,20 @@ class MockBookingRepository implements IBookingRepository {
   Future<Set<String>> getBookedSlotIds(
     DateTime date,
     String packageId,
+    {
+    String? panditId,
+  }
   ) async {
     await _delay(ms: 300);
-    final prefix = '${_fmtDate(date)}_';
-    final result = <String>{};
-    for (final entry in _bookedSlotKeys.entries) {
-      if (entry.key.startsWith(prefix) && entry.value.contains(packageId)) {
-        result.add(entry.key.substring(entry.key.indexOf('_') + 1));
-      }
-    }
-    return result;
+    if (panditId == null || panditId.isEmpty) return {};
+    return _store
+        .where((b) =>
+            b.packageId == packageId &&
+            b.panditId == panditId &&
+            _fmtDate(b.date) == _fmtDate(date) &&
+            b.status != BookingStatus.cancelled)
+        .map((b) => b.slot.id)
+        .toSet();
   }
 
   @override
@@ -404,8 +638,14 @@ class MockBookingRepository implements IBookingRepository {
     final pandit = draft.isAutoAssign ? null : draft.panditOption;
 
     // Mirrors the partial unique index check.
-    final takenIds = await getBookedSlotIds(date, pkg.id);
-    if (takenIds.contains(slot.id)) throw const SlotConflictException();
+    if (pandit != null) {
+      final takenIds = await getBookedSlotIds(
+        date,
+        pkg.id,
+        panditId: pandit.id,
+      );
+      if (takenIds.contains(slot.id)) throw const SlotConflictException();
+    }
 
     final booking = BookingModel(
       id:             _generateId(),
@@ -421,13 +661,45 @@ class MockBookingRepository implements IBookingRepository {
       createdAt:      DateTime.now(),
       panditId:       pandit?.id,
       panditName:     pandit?.name,
+      panditAvatarUrl: pandit?.imageUrl,
       isAutoAssigned: draft.isAutoAssign,
     );
 
     _store.add(booking);
-    _bookedSlotKeys
-        .putIfAbsent('${_fmtDate(date)}_${slot.id}', () => {})
-        .add(pkg.id);
+    return booking;
+  }
+
+  @override
+  Future<BookingModel> createSpecialPoojaBooking({
+    required SpecialPoojaModel pooja,
+    required DateTime date,
+    required String userId,
+    required String notes,
+    required String paymentId,
+  }) async {
+    await _delay(ms: 600);
+    final booking = BookingModel(
+      id: _generateId(),
+      userId: userId,
+      packageId: pooja.id,
+      specialPoojaId: pooja.id,
+      packageTitle: pooja.title,
+      category: 'Special Pooja',
+      date: date,
+      slot: _specialPoojaSlotForDuration(pooja.durationMinutes),
+      location: const BookingLocation(
+        isOnline: true,
+        meetLink: 'Temple livestream link will be shared once our team finalizes the session details.',
+      ),
+      status: BookingStatus.pending,
+      amount: pooja.price,
+      createdAt: DateTime.now(),
+      isAutoAssigned: true,
+      isPaid: true,
+      paymentId: paymentId,
+      notes: notes,
+    );
+    _store.add(booking);
     return booking;
   }
 
@@ -469,10 +741,6 @@ class MockBookingRepository implements IBookingRepository {
   static String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  static String _todayStr() => _fmtDate(DateTime.now());
-
-  static String _tomorrowStr() =>
-      _fmtDate(DateTime.now().add(const Duration(days: 1)));
 }
 
 // ── Seed data ─────────────────────────────────────────────────────────────────
@@ -497,6 +765,7 @@ List<BookingModel> get _seedBookings => [
         createdAt: DateTime.now().subtract(const Duration(days: 2)),
         panditName: 'Pt. Ramesh Sharma',
         panditId: 'p001',
+        panditAvatarUrl: 'assets/images/image12.jpg',
       ),
       BookingModel(
         id: 'bk_seed_002',
@@ -531,6 +800,7 @@ List<BookingModel> get _seedBookings => [
         createdAt: DateTime.now().subtract(const Duration(days: 35)),
         panditName: 'Swami Prakash Das',
         panditId: 'p005',
+        panditAvatarUrl: 'assets/images/image13.jpg',
         isPaid: true,
       ),
     ];

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supa;
 
 import '../models/auth_state.dart';
@@ -19,8 +20,11 @@ class AuthController extends StateNotifier<AuthState> {
     _init();
   }
 
+  static const _staySignedInPrefKey = 'stay_signed_in';
+
   final AuthRepository _repository;
   StreamSubscription<supa.AuthState>? _authSub;
+  bool? _staySignedIn;
 
   // ── Initialisation ────────────────────────────────────────────────────────
   void _init() {
@@ -32,9 +36,13 @@ class AuthController extends StateNotifier<AuthState> {
     // before the first frame (can happen when the event fired before we
     // subscribed), check the current session synchronously.
     Future.microtask(() async {
+      await _ensureStaySignedInLoaded();
       if (state is! AuthInitial) return; // stream already handled it
       final session = _repository.currentSession;
       if (session == null) {
+        state = const AuthUnauthenticated();
+      } else if (_staySignedIn == false) {
+        await _repository.signOut();
         state = const AuthUnauthenticated();
       } else {
         await _loadProfile(session.user);
@@ -45,12 +53,18 @@ class AuthController extends StateNotifier<AuthState> {
   /// Reacts to every Supabase auth event (initial session, sign-in,
   /// token-refresh, sign-out, user-deleted, etc.)
   Future<void> _handleSupabaseAuthEvent(supa.AuthState event) async {
+    await _ensureStaySignedInLoaded();
     final session = event.session;
 
     switch (event.event) {
       // ── App started with a saved session (auto-login) ─────────────────────
       case supa.AuthChangeEvent.initialSession:
         if (session == null) {
+          state = const AuthUnauthenticated();
+          return;
+        }
+        if (_staySignedIn == false) {
+          await _repository.signOut();
           state = const AuthUnauthenticated();
           return;
         }
@@ -69,6 +83,23 @@ class AuthController extends StateNotifier<AuthState> {
       default:
         break;
     }
+  }
+
+  Future<void> _ensureStaySignedInLoaded() async {
+    if (_staySignedIn != null) return;
+    final prefs = await SharedPreferences.getInstance();
+    _staySignedIn = prefs.getBool(_staySignedInPrefKey) ?? true;
+  }
+
+  Future<bool> getStaySignedInPreference() async {
+    await _ensureStaySignedInLoaded();
+    return _staySignedIn ?? true;
+  }
+
+  Future<void> setStaySignedInPreference(bool value) async {
+    _staySignedIn = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_staySignedInPrefKey, value);
   }
 
   /// Fetches (or creates) the profile row and transitions to [AuthAuthenticated].

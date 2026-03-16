@@ -4,7 +4,7 @@
 /// project URL and anon/public key before running the app.
 ///
 /// You can find them at:
-///   https://supabase.com/dashboard/project/<your-project>/settings/api
+///   https://supabase.com/dashboard/project/`your-project`/settings/api
 class SupabaseConfig {
   SupabaseConfig._();
 

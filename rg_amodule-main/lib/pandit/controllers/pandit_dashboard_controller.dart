@@ -1,5 +1,6 @@
 // lib/pandit/controllers/pandit_dashboard_controller.dart
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../booking/models/booking_status.dart';
@@ -100,10 +101,11 @@ class PanditDashboardController
         consultationEnabled: profile.consultationEnabled,
         loading: false,
       );
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('PanditDashboard load() error: $e\n$st');
       state = state.copyWith(
         loading: false,
-        error: 'Failed to load dashboard. Please try again.',
+        error: kDebugMode ? e.toString() : 'Failed to load dashboard. Please try again.',
       );
     }
   }

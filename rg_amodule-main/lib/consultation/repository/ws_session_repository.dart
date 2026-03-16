@@ -3,11 +3,15 @@
 // Replaces [MockSessionRepository] by pointing providers at this class.
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../account/models/app_notification.dart';
+import '../../account/repository/notifications_repository.dart';
 import '../models/consultation_session.dart';
 import '../models/pandit_model.dart';
+import '../models/scheduled_consultation_request.dart';
 import 'consultation_repository.dart';
 
 // ── WsSessionRepository ────────────────────────────────────────────────────────
@@ -24,6 +28,7 @@ class WsSessionRepository implements ISessionRepository {
   WsSessionRepository(this._client);
 
   final SupabaseClient _client;
+  static const _chatMediaBucket = 'consultation-chat-media';
 
   // Per-session controllers and cleanup handles
   final Map<String, StreamController<SessionEvent>> _controllers = {};
@@ -66,6 +71,290 @@ class WsSessionRepository implements ISessionRepository {
       totalSeconds: rate.duration * 60,
       status:       SessionStatus.connecting,
       startedAt:    startedAt,
+    );
+  }
+
+  @override
+  Future<ConsultationSession?> fetchActiveSessionForUser({
+    required String userId,
+    required String userName,
+  }) async {
+    final row = await _client
+        .from('consultations')
+        .select('id,pandit_id,start_ts,duration_minutes,price,status')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('start_ts', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    if (row == null) return null;
+
+    final panditId = row['pandit_id'] as String?;
+    if (panditId == null) return null;
+    final pandit = await SupabasePanditRepository(_client).fetchPandit(panditId);
+    if (pandit == null) return null;
+
+    final durationMinutes = row['duration_minutes'] as int? ?? 10;
+    final totalPaise = (((row['price'] as num?)?.toDouble() ?? 99.0) * 100).toInt();
+    final rate = ConsultationRate(
+      duration: durationMinutes,
+      totalPaise: totalPaise,
+    );
+
+    return ConsultationSession(
+      id: row['id'] as String,
+      pandit: pandit,
+      userId: userId,
+      userName: userName,
+      rate: rate,
+      totalSeconds: durationMinutes * 60,
+      status: SessionStatus.connecting,
+      startedAt: DateTime.tryParse(row['start_ts'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  @override
+  Future<ScheduledConsultationRequest> requestScheduledSession({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+    required DateTime scheduledFor,
+    required bool isPaid,
+    required String? paymentId,
+    String? customerNote,
+  }) async {
+    final result = await _client.rpc('request_consultation_slot', params: {
+      'p_pandit_id': pandit.id,
+      'p_duration_minutes': rate.duration,
+      'p_price': rate.totalPaise / 100.0,
+      'p_scheduled_for': scheduledFor.toUtc().toIso8601String(),
+      'p_is_paid': isPaid,
+      'p_payment_id': paymentId,
+      'p_customer_note': customerNote,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+
+    final sessionId = data['session_id'] as String;
+    final row = await _client
+        .from('consultations')
+        .select('''
+          id,user_id,pandit_id,status,duration_minutes,price,start_ts,created_at,
+          proposed_ts,customer_note,pandit_note,is_paid,payment_id,
+          user:profiles!consultations_user_id_fkey(full_name),
+          pandit:profiles!consultations_pandit_id_fkey(full_name)
+        ''')
+        .eq('id', sessionId)
+        .single();
+    final request = _scheduledFromRow(row);
+
+    if (isPaid) {
+      await _createNotification(
+        userId: userId,
+        type: AppNotificationType.paymentCompleted,
+        title: 'Payment completed',
+        body: 'Payment received for your consultation with ${pandit.name}.',
+        entityType: 'consultation',
+        entityId: request.id,
+      );
+    }
+    await _createNotification(
+      userId: userId,
+      type: AppNotificationType.consultationRequested,
+      title: 'Consultation requested',
+      body: 'Your slot request for ${pandit.name} was sent for ${_formatDateTime(request.scheduledFor)}.',
+      entityType: 'consultation',
+      entityId: request.id,
+    );
+    await _createNotification(
+      userId: pandit.id,
+      type: AppNotificationType.consultationRequested,
+      title: 'New consultation request',
+      body: '$userName requested a consultation for ${_formatDateTime(request.scheduledFor)}.',
+      entityType: 'consultation',
+      entityId: request.id,
+    );
+
+    return request;
+  }
+
+  @override
+  Future<List<ScheduledConsultationRequest>> fetchUserScheduledRequests(
+      String userId) async {
+    final rows = await _client
+        .from('consultations')
+        .select('''
+          id,user_id,pandit_id,status,duration_minutes,price,start_ts,created_at,
+          proposed_ts,customer_note,pandit_note,is_paid,payment_id,
+          user:profiles!consultations_user_id_fkey(full_name),
+          pandit:profiles!consultations_pandit_id_fkey(full_name)
+        ''')
+        .eq('user_id', userId)
+        .inFilter('status', [
+          'pending',
+          'confirmed',
+          'reschedule_proposed',
+          'active',
+          'ended',
+          'expired',
+          'refunded',
+          'rejected'
+        ])
+        .order('created_at', ascending: false)
+        .range(0, 99);
+
+    return (rows as List)
+        .cast<Map<String, dynamic>>()
+        .map(_scheduledFromRow)
+        .toList();
+  }
+
+  @override
+  Future<List<ScheduledConsultationRequest>> fetchPanditScheduledRequests(
+      String panditId) async {
+    final rows = await _client
+        .from('consultations')
+        .select('''
+          id,user_id,pandit_id,status,duration_minutes,price,start_ts,created_at,
+          proposed_ts,customer_note,pandit_note,is_paid,payment_id,
+          user:profiles!consultations_user_id_fkey(full_name),
+          pandit:profiles!consultations_pandit_id_fkey(full_name)
+        ''')
+        .eq('pandit_id', panditId)
+        .inFilter('status', [
+          'pending',
+          'confirmed',
+          'reschedule_proposed',
+          'active',
+          'ended',
+          'expired',
+          'refunded',
+          'rejected'
+        ])
+        .order('created_at', ascending: false)
+        .range(0, 99);
+
+    return (rows as List)
+        .cast<Map<String, dynamic>>()
+        .map(_scheduledFromRow)
+        .toList();
+  }
+
+  @override
+  Future<void> panditRespondToScheduledRequest({
+    required String sessionId,
+    required String action,
+    DateTime? proposedStart,
+    String? note,
+  }) async {
+    final result = await _client.rpc('pandit_respond_consultation_request', params: {
+      'p_session_id': sessionId,
+      'p_action': action,
+      'p_proposed_ts': proposedStart?.toUtc().toIso8601String(),
+      'p_note': note,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+
+    final request = await _fetchScheduledRequest(sessionId);
+    switch (action) {
+      case 'accept':
+        await _createNotification(
+          userId: request.userId,
+          type: AppNotificationType.consultationConfirmed,
+          title: 'Consultation confirmed',
+          body: '${request.panditName} confirmed your consultation for ${_formatDateTime(request.scheduledFor)}.',
+          entityType: 'consultation',
+          entityId: sessionId,
+        );
+      case 'propose':
+        final proposed = request.proposedFor ?? proposedStart;
+        if (proposed != null) {
+          await _createNotification(
+            userId: request.userId,
+            type: AppNotificationType.consultationRescheduleProposed,
+            title: 'New consultation time proposed',
+            body: '${request.panditName} proposed ${_formatDateTime(proposed)} for your consultation.',
+            entityType: 'consultation',
+            entityId: sessionId,
+          );
+        }
+      case 'reject':
+        await _createNotification(
+          userId: request.userId,
+          type: request.isPaid
+              ? AppNotificationType.consultationRefunded
+              : AppNotificationType.consultationRejected,
+          title: request.isPaid ? 'Consultation refunded' : 'Consultation rejected',
+          body: request.isPaid
+              ? '${request.panditName} declined the request. A refund is pending for this consultation.'
+              : '${request.panditName} declined your consultation request.',
+          entityType: 'consultation',
+          entityId: sessionId,
+        );
+    }
+  }
+
+  @override
+  Future<void> userRespondToProposedTime({
+    required String sessionId,
+    required bool accept,
+    String? note,
+  }) async {
+    final result = await _client.rpc('user_respond_consultation_proposal', params: {
+      'p_session_id': sessionId,
+      'p_accept': accept,
+      'p_note': note,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+
+    final request = await _fetchScheduledRequest(sessionId);
+    if (accept) {
+      await _createNotification(
+        userId: request.userId,
+        type: AppNotificationType.consultationConfirmed,
+        title: 'Consultation confirmed',
+        body: 'You accepted the new slot for ${_formatDateTime(request.scheduledFor)}.',
+        entityType: 'consultation',
+        entityId: sessionId,
+      );
+      await _createNotification(
+        userId: request.panditId,
+        type: AppNotificationType.consultationConfirmed,
+        title: 'User accepted new time',
+        body: '${request.userName} accepted the updated consultation slot.',
+        entityType: 'consultation',
+        entityId: sessionId,
+      );
+      return;
+    }
+
+    await _createNotification(
+      userId: request.userId,
+      type: AppNotificationType.consultationRefunded,
+      title: 'Consultation declined',
+      body: 'You declined the proposed time. This consultation is now marked for refund.',
+      entityType: 'consultation',
+      entityId: sessionId,
+    );
+    await _createNotification(
+      userId: request.panditId,
+      type: AppNotificationType.consultationRejected,
+      title: 'User declined proposed time',
+      body: '${request.userName} declined the proposed consultation time.',
+      entityType: 'consultation',
+      entityId: sessionId,
     );
   }
 
@@ -205,7 +494,11 @@ class WsSessionRepository implements ISessionRepository {
 
   @override
   Future<void> sendMessage(
-      String sessionId, String text, String senderId) async {
+    String sessionId,
+    String text,
+    String senderId, {
+    String? imageUrl,
+  }) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw StateError('Not authenticated');
 
@@ -226,7 +519,25 @@ class WsSessionRepository implements ISessionRepository {
       'consultation_id': sessionId,
       'sender_id': userId,
       'content': text,
+      'image_url': imageUrl,
     });
+  }
+
+  @override
+  Future<String> uploadChatImage({
+    required String sessionId,
+    required String senderId,
+    required Uint8List bytes,
+    required String fileExt,
+  }) async {
+    final ext = fileExt.replaceAll('.', '').toLowerCase();
+    final objectPath = '$sessionId/$senderId/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _client.storage.from(_chatMediaBucket).uploadBinary(
+      objectPath,
+      bytes,
+      fileOptions: const FileOptions(upsert: false),
+    );
+    return _client.storage.from(_chatMediaBucket).getPublicUrl(objectPath);
   }
 
   // ── extendSession ────────────────────────────────────────────────────────
@@ -341,10 +652,97 @@ class WsSessionRepository implements ISessionRepository {
       senderId: row['sender_id'] as String,
       senderName: profile?['full_name'] as String? ?? 'Pandit',
       text: row['content'] as String,
+        imageUrl: row['image_url'] as String?,
       isFromPandit: role == 'pandit',
       sentAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.now(),
     );
+  }
+
+  static ScheduledConsultationRequest _scheduledFromRow(
+      Map<String, dynamic> row) {
+    final user = row['user'] as Map<String, dynamic>? ?? const {};
+    final pandit = row['pandit'] as Map<String, dynamic>? ?? const {};
+    return ScheduledConsultationRequest(
+      id: row['id'] as String,
+      userId: row['user_id'] as String,
+      userName: user['full_name'] as String? ?? '',
+      panditId: row['pandit_id'] as String,
+      panditName: pandit['full_name'] as String? ?? '',
+      status: ConsultationRequestStatusX.fromDb(
+        row['status'] as String? ?? 'pending',
+      ),
+      durationMinutes: row['duration_minutes'] as int? ?? 0,
+      amountPaise: (((row['price'] as num?)?.toDouble() ?? 0.0) * 100).toInt(),
+      scheduledFor: DateTime.tryParse(row['start_ts'] as String? ?? '') ??
+          DateTime.now(),
+      createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
+          DateTime.now(),
+      proposedFor: row['proposed_ts'] != null
+          ? DateTime.tryParse(row['proposed_ts'] as String)
+          : null,
+      customerNote: row['customer_note'] as String?,
+      panditNote: row['pandit_note'] as String?,
+      isPaid: row['is_paid'] as bool? ?? false,
+      paymentId: row['payment_id'] as String?,
+    );
+  }
+
+  Future<ScheduledConsultationRequest> _fetchScheduledRequest(String sessionId) async {
+    final row = await _client
+        .from('consultations')
+        .select('''
+          id,user_id,pandit_id,status,duration_minutes,price,start_ts,created_at,
+          proposed_ts,customer_note,pandit_note,is_paid,payment_id,
+          user:profiles!consultations_user_id_fkey(full_name),
+          pandit:profiles!consultations_pandit_id_fkey(full_name)
+        ''')
+        .eq('id', sessionId)
+        .single();
+    return _scheduledFromRow(row);
+  }
+
+  Future<void> _createNotification({
+    required String userId,
+    required AppNotificationType type,
+    required String title,
+    required String body,
+    String? entityType,
+    String? entityId,
+  }) async {
+    try {
+      await SupabaseNotificationsRepository(_client).createNotification(
+        userId: userId,
+        type: type,
+        title: title,
+        body: body,
+        entityType: entityType,
+        entityId: entityId,
+      );
+    } catch (_) {
+      // Notifications must not block consultation transitions.
+    }
+  }
+
+  static String _formatDateTime(DateTime dt) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $hour:$minute $period';
   }
 }
 

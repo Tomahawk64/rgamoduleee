@@ -137,6 +137,9 @@ class _AdminBookingsScreenState
                       onAssignPandit: (panditId) => ref
                           .read(adminProvider.notifier)
                           .assignPandit(filtered[i].id, panditId),
+                      onMarkAsPaid: () => ref
+                          .read(adminProvider.notifier)
+                          .markAsPaid(filtered[i].id),
                     ),
                   ),
           ),
@@ -193,20 +196,30 @@ class _FilterChip extends StatelessWidget {
 
 // ── Booking row ───────────────────────────────────────────────────────────────
 
-class _BookingRow extends StatelessWidget {
+class _BookingRow extends StatefulWidget {
   const _BookingRow({
     required this.booking,
     required this.pandits,
     required this.onUpdateStatus,
     required this.onAssignPandit,
+    required this.onMarkAsPaid,
   });
   final AdminBookingRow booking;
   final List<AdminPandit> pandits;
   final ValueChanged<BookingStatus> onUpdateStatus;
   final ValueChanged<String> onAssignPandit;
+  final VoidCallback onMarkAsPaid;
+
+  @override
+  State<_BookingRow> createState() => _BookingRowState();
+}
+
+class _BookingRowState extends State<_BookingRow> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
+    final booking = widget.booking;
     final statusColor = booking.status.color;
 
     return Container(
@@ -225,12 +238,11 @@ class _BookingRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header row: status chip + amount ──────────────────────────────
           Row(
             children: [
-              // Status chip
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
@@ -238,8 +250,7 @@ class _BookingRow extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(booking.status.icon,
-                        size: 10, color: statusColor),
+                    Icon(booking.status.icon, size: 10, color: statusColor),
                     const SizedBox(width: 3),
                     Text(
                       booking.status.label,
@@ -253,23 +264,24 @@ class _BookingRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              if (!booking.isPaid)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'Unpaid',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.error,
-                    ),
+              // Payment chip
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: booking.isPaid
+                      ? AppColors.success.withValues(alpha: 0.1)
+                      : AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  booking.isPaid ? 'Paid' : 'Unpaid',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: booking.isPaid ? AppColors.success : AppColors.error,
                   ),
                 ),
+              ),
               const Spacer(),
               Text(
                 '₹${booking.amount.toStringAsFixed(0)}',
@@ -281,6 +293,8 @@ class _BookingRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
+
+          // ── Package title ─────────────────────────────────────────────────
           Text(
             booking.packageTitle,
             style: const TextStyle(
@@ -289,7 +303,9 @@ class _BookingRow extends StatelessWidget {
               color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
+
+          // ── Client info (name + phone) ────────────────────────────────────
           Row(
             children: [
               const Icon(Icons.person_outline,
@@ -300,40 +316,40 @@ class _BookingRow extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 12, color: AppColors.textSecondary),
               ),
-              if (booking.panditName != null) ...[
+              if (booking.clientPhone != null) ...[
                 const SizedBox(width: 8),
-                const Icon(Icons.supervised_user_circle_outlined,
+                const Icon(Icons.phone_outlined,
                     size: 12, color: AppColors.textSecondary),
                 const SizedBox(width: 3),
-                Expanded(
-                  child: Text(
-                    booking.panditName!,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Text(
+                  booking.clientPhone!,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
                 ),
-              ] else
-                const Spacer(),
+              ],
             ],
           ),
+
+          if (booking.clientEmail != null) ...[
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                const Icon(Icons.email_outlined,
+                    size: 12, color: AppColors.textSecondary),
+                const SizedBox(width: 3),
+                Text(
+                  booking.clientEmail!,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 4),
+
+          // ── Date + time slot ──────────────────────────────────────────────
           Row(
             children: [
-              Icon(
-                booking.isOnline
-                    ? Icons.videocam_outlined
-                    : Icons.location_on_outlined,
-                size: 12,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                booking.isOnline ? 'Online' : 'In-person',
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary),
-              ),
-              const Spacer(),
               const Icon(Icons.calendar_today,
                   size: 11, color: AppColors.textSecondary),
               const SizedBox(width: 3),
@@ -342,10 +358,151 @@ class _BookingRow extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 11, color: AppColors.textSecondary),
               ),
+              if (booking.timeSlot != null) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.schedule_outlined,
+                    size: 11, color: AppColors.textSecondary),
+                const SizedBox(width: 3),
+                Text(
+                  booking.timeSlot!,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
             ],
           ),
 
-          // Status update
+          // ── Location / Address ────────────────────────────────────────────
+          if (booking.address != null) ...[
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Icon(
+                  booking.isOnline
+                      ? Icons.videocam_outlined
+                      : Icons.location_on_outlined,
+                  size: 12,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: 3),
+                Expanded(
+                  child: Text(
+                    booking.address!,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // ── Pandit ────────────────────────────────────────────────────────
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.supervised_user_circle_outlined,
+                  size: 12, color: AppColors.textSecondary),
+              const SizedBox(width: 3),
+              Text(
+                booking.panditName ?? 'Not yet assigned',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: booking.panditName != null
+                      ? AppColors.textSecondary
+                      : AppColors.error,
+                  fontStyle: booking.panditName == null
+                      ? FontStyle.italic
+                      : FontStyle.normal,
+                ),
+              ),
+            ],
+          ),
+
+          // ── User notes (expandable) ───────────────────────────────────────
+          if (booking.userNotes != null) ...[
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Row(
+                children: [
+                  const Icon(Icons.notes_outlined,
+                      size: 12, color: AppColors.textSecondary),
+                  const SizedBox(width: 3),
+                  const Text(
+                    'User note',
+                    style: TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+            ),
+            if (_expanded)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 16),
+                child: Text(
+                  booking.userNotes!,
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic),
+                ),
+              ),
+          ],
+
+          // ── Payment actions for unpaid bookings ───────────────────────────
+          if (!booking.isPaid && !booking.status.isFinal) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: AppColors.divider),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: widget.onMarkAsPaid,
+                    icon: const Icon(Icons.check_circle_outline, size: 14),
+                    label: const Text('Mark as Paid',
+                        style: TextStyle(fontSize: 12)),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showPaymentReminderDialog(context),
+                    icon: const Icon(
+                        Icons.notifications_active_outlined,
+                        size: 14),
+                    label: const Text('Remind',
+                        style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      side: const BorderSide(color: AppColors.error),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // ── Status update ─────────────────────────────────────────────────
           if (!booking.status.isFinal) ...[
             const SizedBox(height: 10),
             const Divider(height: 1, color: AppColors.divider),
@@ -367,19 +524,18 @@ class _BookingRow extends StatelessWidget {
                     child: Row(
                       children: BookingStatus.values
                           .where((s) =>
-                              s != booking.status && s.index > booking.status.index)
+                              s != booking.status &&
+                              s.index > booking.status.index)
                           .map((s) => Padding(
-                                padding:
-                                    const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.only(right: 6),
                                 child: GestureDetector(
-                                  onTap: () =>
-                                      onUpdateStatus(s),
+                                  onTap: () => widget.onUpdateStatus(s),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                      color: s.color
-                                          .withValues(alpha: 0.1),
+                                      color:
+                                          s.color.withValues(alpha: 0.1),
                                       borderRadius:
                                           BorderRadius.circular(8),
                                       border: Border.all(
@@ -405,8 +561,8 @@ class _BookingRow extends StatelessWidget {
             ),
           ],
 
-          // Assign Pandit
-          if (pandits.isNotEmpty && !booking.status.isFinal) ...[
+          // ── Assign Pandit ─────────────────────────────────────────────────
+          if (widget.pandits.isNotEmpty && !booking.status.isFinal) ...[
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () => _showAssignPanditSheet(context),
@@ -419,20 +575,34 @@ class _BookingRow extends StatelessWidget {
                   border: Border.all(
                       color: AppColors.secondary.withValues(alpha: 0.3)),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.person_add_outlined,
-                        size: 13, color: AppColors.secondary),
-                    const SizedBox(width: 6),
-                    Text(
-                      booking.panditId != null
-                          ? 'Reassign Pandit'
-                          : 'Assign Pandit',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.secondary,
-                        fontWeight: FontWeight.w600,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_add_outlined,
+                            size: 13, color: AppColors.secondary),
+                        const SizedBox(width: 6),
+                        Text(
+                          booking.panditId != null
+                              ? 'Reassign Pandit'
+                              : 'Assign Pandit',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.secondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Assign at least 24 hours before the booking date',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textSecondary,
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
                   ],
@@ -440,6 +610,39 @@ class _BookingRow extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  void _showPaymentReminderDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send Payment Reminder'),
+        content: Text(
+          'Send a payment reminder to ${widget.booking.clientName} for '
+          '${widget.booking.packageTitle} (₹${widget.booking.amount.toStringAsFixed(0)})?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                      'Payment reminder sent to ${widget.booking.clientName}.'),
+                  backgroundColor: AppColors.success,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            },
+            child: const Text('Send Reminder'),
+          ),
         ],
       ),
     );
@@ -471,9 +674,9 @@ class _BookingRow extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
               child: Text(
-                'Assign Pandit — ${booking.packageTitle}',
+                'Assign Pandit — ${widget.booking.packageTitle}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
@@ -482,15 +685,27 @@ class _BookingRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Please assign the pandit at least 24 hours before the booking date.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
             const Divider(height: 1),
             Expanded(
               child: ListView.builder(
                 controller: scroll,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: pandits.length,
+                itemCount: widget.pandits.length,
                 itemBuilder: (_, i) {
-                  final p = pandits[i];
-                  final isCurrentlyAssigned = booking.panditId == p.id;
+                  final p = widget.pandits[i];
+                  final isCurrentlyAssigned =
+                      widget.booking.panditId == p.id;
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor:
@@ -521,7 +736,7 @@ class _BookingRow extends StatelessWidget {
                         : const Icon(Icons.arrow_forward_ios, size: 14),
                     onTap: () {
                       Navigator.pop(context);
-                      onAssignPandit(p.id);
+                      widget.onAssignPandit(p.id);
                     },
                   );
                 },

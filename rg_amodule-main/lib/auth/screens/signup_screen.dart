@@ -289,7 +289,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         height: 24,
                         child: Checkbox(
                           value: _acceptedTerms,
-                          activeColor: AppColors.primary,
+                          fillColor: const WidgetStatePropertyAll(
+                            AppColors.primary,
+                          ),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(4)),
                           onChanged: (v) =>

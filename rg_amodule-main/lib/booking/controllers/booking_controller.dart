@@ -8,7 +8,7 @@ import '../repository/booking_repository.dart';
 
 // ── Wizard State ──────────────────────────────────────────────────────────────
 
-/// All state the booking wizard needs across its 7 steps.
+/// All state the booking wizard needs across its 6 steps.
 class BookingWizardState {
   const BookingWizardState({
     this.currentStep = 0,
@@ -36,7 +36,7 @@ class BookingWizardState {
   /// Non-null after a successful booking submission (step 6 success).
   final BookingModel? completedBooking;
 
-  int get totalSteps => 7; // 0-based: 0…6
+  int get totalSteps => 6; // 0-based: 0…5
   bool get isLastStep => currentStep == totalSteps - 1;
   bool get isFirstStep => currentStep == 0;
 
@@ -47,9 +47,8 @@ class BookingWizardState {
       case 1: return draft.step1Valid;
       case 2: return draft.step2Valid;
       case 3: return draft.step3Valid;
-      case 4: return draft.step4Valid;
-      case 5: return draft.readyToConfirm; // confirm step
-      case 6: return completedBooking != null; // payment step
+      case 4: return draft.readyToConfirm; // confirm step
+      case 5: return completedBooking != null; // payment step
       default: return true;
     }
   }
@@ -164,14 +163,28 @@ class BookingWizardController extends StateNotifier<BookingWizardState> {
       clearError: true,
     );
     if (state.draft.package != null) {
-      _loadBookedSlots(date, state.draft.package!.id);
+      _loadBookedSlots(
+        date,
+        state.draft.package!.id,
+        panditId: state.draft.isAutoAssign
+            ? null
+            : state.draft.panditOption?.id,
+      );
     }
   }
 
-  Future<void> _loadBookedSlots(DateTime date, String packageId) async {
+  Future<void> _loadBookedSlots(
+    DateTime date,
+    String packageId, {
+    String? panditId,
+  }) async {
     state = state.copyWith(loadingSlots: true, clearError: true);
     try {
-      final ids = await _repository.getBookedSlotIds(date, packageId);
+      final ids = await _repository.getBookedSlotIds(
+        date,
+        packageId,
+        panditId: panditId,
+      );
       state = state.copyWith(bookedSlotIds: ids, loadingSlots: false);
     } catch (_) {
       state = state.copyWith(loadingSlots: false, bookedSlotIds: {});
@@ -203,20 +216,7 @@ class BookingWizardController extends StateNotifier<BookingWizardState> {
     );
   }
 
-  // ── Step 4: Pandit ────────────────────────────────────────────────────────
-
-  void selectPandit(PanditOption pandit) {
-    final isAuto = pandit.id == 'auto';
-    state = state.copyWith(
-      draft: state.draft.copyWith(
-        panditOption: pandit,
-        isAutoAssign: isAuto,
-      ),
-      clearError: true,
-    );
-  }
-
-  // ── Step 5: Confirm → submit booking ─────────────────────────────────────
+  // ── Step 4: Confirm → submit booking ─────────────────────────────────────
 
   Future<void> submitBooking(String userId) async {
     if (!state.draft.readyToConfirm) {
@@ -232,7 +232,7 @@ class BookingWizardController extends StateNotifier<BookingWizardState> {
       state = state.copyWith(
         submitting: false,
         completedBooking: booking,
-        currentStep: 6, // advance to payment step
+        currentStep: 5, // advance to payment step
       );
     } catch (e) {
       state = state.copyWith(

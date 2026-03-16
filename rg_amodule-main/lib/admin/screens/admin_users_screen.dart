@@ -318,7 +318,7 @@ class _UserCard extends StatelessWidget {
               Switch(
                 value: user.isActive,
                 onChanged: onToggle,
-                activeColor: AppColors.success,
+                activeThumbColor: AppColors.success,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
 
@@ -329,7 +329,7 @@ class _UserCard extends StatelessWidget {
                   if (role == user.role) return;
                   showDialog<bool>(
                     context: context,
-                    builder: (_) => AlertDialog(
+                    builder: (dialogContext) => AlertDialog(
                       title: const Text('Change Role'),
                       content: Text(
                         'Change ${user.fullName}\'s role to "$role"?\n\nThis affects their access level.',
@@ -337,12 +337,12 @@ class _UserCard extends StatelessWidget {
                       actions: [
                         TextButton(
                           onPressed: () =>
-                              Navigator.pop(context, false),
+                              Navigator.pop(dialogContext, false),
                           child: const Text('Cancel'),
                         ),
                         FilledButton(
                           onPressed: () =>
-                              Navigator.pop(context, true),
+                              Navigator.pop(dialogContext, true),
                           child: const Text('Confirm'),
                         ),
                       ],

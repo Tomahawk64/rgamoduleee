@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../controllers/consultation_controller.dart';
@@ -20,6 +21,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     with WidgetsBindingObserver {
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _picker = ImagePicker();
   bool _hasText = false;
 
   @override
@@ -74,6 +76,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           widget.session.userId,
           widget.session.userName,
         );
+    _scrollToBottom();
+  }
+
+  Future<void> _pickAndSendImage(SessionController ctrl) async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1800,
+      imageQuality: 80,
+    );
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+    final name = file.name.toLowerCase();
+    final ext = name.endsWith('.png')
+        ? 'png'
+        : (name.endsWith('.webp') ? 'webp' : 'jpg');
+
+    await ctrl.sendImageMessage(
+      bytes: bytes,
+      fileExt: ext,
+      userId: widget.session.userId,
+      userName: widget.session.userName,
+    );
     _scrollToBottom();
   }
 
@@ -152,6 +177,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               hasText: _hasText,
               locked: isExpired,
               onSend: _sendMessage,
+              onAttach: () => _pickAndSendImage(ctrl),
               onExtend: isExpired
                   ? () => _showExtendSheet(context, ctrl)
                   : null,
@@ -504,11 +530,41 @@ class _MessageBubble extends StatelessWidget {
                           Radius.circular(isMe ? 4 : 18),
                     ),
                   ),
-                  child: Text(
-                    message.text,
-                    style: TextStyle(
-                        color: isMe ? Colors.white : null,
-                        fontSize: 14.5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (message.hasImage)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: message.text.isNotEmpty ? 8 : 0,
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              message.imageUrl!,
+                              width: 220,
+                              height: 180,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                width: 220,
+                                height: 180,
+                                color: Colors.black12,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.broken_image_rounded),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (message.text.isNotEmpty)
+                        Text(
+                          message.text,
+                          style: TextStyle(
+                            color: isMe ? Colors.white : null,
+                            fontSize: 14.5,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -675,12 +731,14 @@ class _ChatInputBar extends StatelessWidget {
     required this.hasText,
     required this.locked,
     required this.onSend,
+    this.onAttach,
     this.onExtend,
   });
   final TextEditingController controller;
   final bool hasText;
   final bool locked;
   final VoidCallback onSend;
+  final VoidCallback? onAttach;
   final VoidCallback? onExtend;
 
   @override
@@ -696,6 +754,24 @@ class _ChatInputBar extends StatelessWidget {
             ? _LockedInputBar(onExtend: onExtend)
             : Row(
                 children: [
+                  InkWell(
+                    onTap: onAttach,
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.image_outlined,
+                        size: 20,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
                   // Text field
                   Expanded(
                     child: Container(

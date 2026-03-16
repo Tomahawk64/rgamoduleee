@@ -9,8 +9,6 @@ import '../../auth/models/user_model.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../auth/models/auth_state.dart';
 import '../../models/role_enum.dart';
-import '../../booking/screens/booking_screen.dart';
-import '../../consultation/screens/consultation_screen.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../pandit/screens/pandit_screen.dart';
@@ -239,16 +237,12 @@ class _UserAccountView extends ConsumerWidget {
                     _MenuItem(
                       icon: Icons.calendar_today,
                       label: 'My Bookings',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const BookingScreen(),
-                        ),
-                      ),
+                          onTap: () => context.push(Routes.myBookings),
                     ),
                     _MenuItem(
                       icon: Icons.chat_bubble,
                       label: 'My Consultations',
-                      onTap: () => context.push(Routes.consultationChat),
+                      onTap: () => context.push(Routes.consultationRequests),
                     ),
                     _MenuItem(
                       icon: Icons.shopping_bag,
@@ -268,12 +262,12 @@ class _UserAccountView extends ConsumerWidget {
                     _MenuItem(
                       icon: Icons.location_on_outlined,
                       label: 'Manage Addresses',
-                      onTap: () {}, // TODO: addresses screen
+                      onTap: () => context.push(Routes.manageAddresses),
                     ),
                     _MenuItem(
                       icon: Icons.notifications_outlined,
                       label: 'Notifications',
-                      onTap: () {},
+                      onTap: () => context.push(Routes.notifications),
                     ),
                   ],
                 ),
@@ -283,17 +277,24 @@ class _UserAccountView extends ConsumerWidget {
                     _MenuItem(
                       icon: Icons.help_outline,
                       label: 'Help & FAQ',
-                      onTap: () {},
+                      onTap: () =>
+                          _showComingSoonSnackbar(context, 'Help & FAQ'),
                     ),
                     _MenuItem(
                       icon: Icons.privacy_tip_outlined,
                       label: 'Privacy Policy',
-                      onTap: () {},
+                      onTap: () => _showComingSoonSnackbar(
+                        context,
+                        'Privacy Policy',
+                      ),
                     ),
                     _MenuItem(
                       icon: Icons.description_outlined,
                       label: 'Terms of Service',
-                      onTap: () {},
+                      onTap: () => _showComingSoonSnackbar(
+                        context,
+                        'Terms of Service',
+                      ),
                     ),
                   ],
                 ),
@@ -369,17 +370,14 @@ class _PanditAccountView extends ConsumerWidget {
                     _MenuItem(
                       icon: Icons.chat_bubble_outline,
                       label: 'Consultation Sessions',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ConsultationScreen(),
-                        ),
-                      ),
+                      onTap: () => context.push(Routes.consultationRequests),
                     ),
                     _MenuItem(
                       icon: Icons.upload_file,
                       label: 'Upload Proof',
                       trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                      onTap: () {},
+                      onTap: () =>
+                          _showComingSoonSnackbar(context, 'Upload Proof'),
                     ),
                   ],
                 ),
@@ -389,12 +387,15 @@ class _PanditAccountView extends ConsumerWidget {
                     _MenuItem(
                       icon: Icons.person_outline,
                       label: 'Edit Profile',
-                      onTap: () {},
+                      onTap: () => context.push(Routes.editProfile),
                     ),
                     _MenuItem(
                       icon: Icons.toggle_on_outlined,
                       label: 'Availability / Online Status',
-                      onTap: () {},
+                      onTap: () => _showComingSoonSnackbar(
+                        context,
+                        'Availability / Online Status',
+                      ),
                     ),
                   ],
                 ),
@@ -533,13 +534,8 @@ class _AdminAccountView extends ConsumerWidget {
                     ),
                     _MenuItem(
                       icon: Icons.calendar_today,
-                      label: 'All Bookings',
-                      onTap: () => context.go(Routes.adminBookings),
-                    ),
-                    _MenuItem(
-                      icon: Icons.chat_bubble,
-                      label: 'Consultations',
-                      onTap: () => context.go(Routes.adminConsultations),
+                      label: 'My Bookings',
+                      onTap: () => context.push(Routes.myBookings),
                     ),
                     _MenuItem(
                       icon: Icons.bar_chart,
@@ -554,7 +550,7 @@ class _AdminAccountView extends ConsumerWidget {
                     _MenuItem(
                       icon: Icons.person_outline,
                       label: 'Profile Settings',
-                      onTap: () {},
+                      onTap: () => context.push(Routes.editProfile),
                     ),
                   ],
                 ),
@@ -567,6 +563,15 @@ class _AdminAccountView extends ConsumerWidget {
       ),
     );
   }
+}
+
+void _showComingSoonSnackbar(BuildContext context, String feature) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text('$feature is coming soon.'),
+      behavior: SnackBarBehavior.floating,
+    ));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -765,28 +770,8 @@ class _LogoutButton extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: OutlinedButton.icon(
         onPressed: () async {
-          final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('Logout'),
-              content: const Text('Are you sure you want to logout?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: Colors.red),
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Logout'),
-                ),
-              ],
-            ),
-          );
-          if (confirmed == true) {
-            await ref.read(authProvider.notifier).logout();
-          }
+          await ref.read(authProvider.notifier).logout();
+          if (context.mounted) context.go(Routes.login);
         },
         icon: const Icon(Icons.logout, color: Colors.red),
         label: const Text(

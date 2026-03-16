@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -408,6 +409,41 @@ class SessionController extends StateNotifier<SessionState> {
     state = state.copyWith(messages: [...state.messages, msg]);
 
     await _repo.sendMessage(state.session.id, text.trim(), userId);
+  }
+
+  Future<void> sendImageMessage({
+    required Uint8List bytes,
+    required String fileExt,
+    required String userId,
+    required String userName,
+    String? caption,
+  }) async {
+    if (state.chatLocked) return;
+
+    final imageUrl = await _repo.uploadChatImage(
+      sessionId: state.session.id,
+      senderId: userId,
+      bytes: bytes,
+      fileExt: fileExt,
+    );
+
+    final msg = ChatMessage(
+      sessionId: state.session.id,
+      senderId: userId,
+      senderName: userName,
+      text: caption?.trim() ?? '',
+      imageUrl: imageUrl,
+      isFromPandit: false,
+    );
+
+    state = state.copyWith(messages: [...state.messages, msg]);
+
+    await _repo.sendMessage(
+      state.session.id,
+      msg.text,
+      userId,
+      imageUrl: imageUrl,
+    );
   }
 
   /// Request a 10-minute extension.

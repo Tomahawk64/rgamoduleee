@@ -9,8 +9,11 @@
 // Signed URLs (TTL = 24 h) are generated on read and never stored in the DB.
 //
 
-/// Maximum allowed video file size (300 MB).
-const kMaxVideoBytes = 300 * 1024 * 1024; // 300 MB
+/// Maximum allowed video file size (200 MB).
+const kMaxVideoBytes = 200 * 1024 * 1024; // 200 MB
+
+/// Proof videos remain visible for this many days after upload.
+const kProofVideoAvailabilityDays = 10;
 
 /// Maximum allowed image file size (3 MB each).
 const kMaxImageBytes = 3 * 1024 * 1024; // 3 MB
@@ -69,6 +72,9 @@ class ProofModel {
 
   bool get hasVideo => videoUrl != null;
   bool get hasImages => imageUrls.isNotEmpty;
+  DateTime get expiresAt =>
+      uploadedAt.toUtc().add(const Duration(days: kProofVideoAvailabilityDays));
+  bool get isExpired => DateTime.now().toUtc().isAfter(expiresAt);
 
   // ── Serialisation ──────────────────────────────────────────────────────────
   Map<String, dynamic> toJson() => {

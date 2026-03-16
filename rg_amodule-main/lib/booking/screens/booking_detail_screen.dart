@@ -202,8 +202,10 @@ class _DetailView extends ConsumerWidget {
                   ),
                 ],
               ),
-            ),            // ── Video proof (only when completed) ────────────────────────────────
-            if (booking.status == BookingStatus.completed) ...[              
+            ),
+
+            // ── Video proof (completed online special-pooja only) ─────────
+            if (_shouldShowProofSection(booking)) ...[
               const SizedBox(height: 12),
               _ProofSection(booking: booking),
             ],
@@ -272,6 +274,18 @@ class _DetailView extends ConsumerWidget {
     final m = d.minute.toString().padLeft(2, '0');
     final period = d.hour < 12 ? 'AM' : 'PM';
     return '${d.day} ${months[d.month - 1]} ${d.year}, $h:$m $period';
+  }
+
+  static bool _isProofEligibleBooking(BookingModel booking) {
+    final specialPoojaId = booking.specialPoojaId;
+    return specialPoojaId != null &&
+        specialPoojaId.isNotEmpty &&
+        booking.location.isOnline;
+  }
+
+  static bool _shouldShowProofSection(BookingModel booking) {
+    return booking.status == BookingStatus.completed &&
+        _isProofEligibleBooking(booking);
   }
 }
 
@@ -536,8 +550,7 @@ class _ProofSection extends ConsumerWidget {
     final proofState = ref.watch(proofViewProvider(booking.id));
     final authState = ref.watch(authProvider);
     final user = authState is AuthAuthenticated ? authState.user : null;
-    final isPanditOrAdmin =
-        user?.role.isPandit == true || user?.role.isAdmin == true;
+    final isAdmin = user?.role.isAdmin == true;
 
     return _SectionCard(
       title: 'Service Proof',
@@ -551,11 +564,11 @@ class _ProofSection extends ConsumerWidget {
               : proofState.hasProof
                   ? _ProofCard(proof: proofState.proof!)
                   : _ProofPending(
-                      canUpload: isPanditOrAdmin,
+                      canUpload: isAdmin,
                       onUpload: () => context.push(
                         '/booking/${booking.id}/upload-proof',
                         extra: {
-                          'panditId': user?.id ?? 'pandit_mock',
+                          'panditId': booking.panditId ?? user?.id ?? '',
                           'title': booking.packageTitle,
                         },
                       ),
@@ -630,6 +643,11 @@ class _ProofCard extends StatelessWidget {
           'Uploaded ${_fmtAgo(proof.uploadedAt)}',
           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
         ),
+        const SizedBox(height: 4),
+        Text(
+          'Available for $kProofVideoAvailabilityDays days after upload.',
+          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+        ),
       ],
     );
   }
@@ -657,8 +675,8 @@ class _ProofPending extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           canUpload
-              ? 'No proof uploaded yet. Upload video and photo proof for this booking.'
-              : 'Service proof has not been uploaded yet.',
+              ? 'No proof uploaded yet. Admin can upload a video proof for this completed special pooja booking.'
+              : 'Proof video is not uploaded yet by admin.',
           textAlign: TextAlign.center,
           style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
         ),

@@ -364,25 +364,25 @@ class _ActiveActions extends ConsumerWidget {
         const _SectionDivider(title: 'Actions'),
         const SizedBox(height: 12),
 
-        // Upload proof
-        OutlinedButton.icon(
-          onPressed: () => context.push(
-            '/booking/${booking.id}/upload-proof',
-            extra: {
-              'panditId': booking.panditId ?? 'mock_pandit',
-              'title': booking.packageTitle,
-            },
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.info.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
           ),
-          icon: const Icon(Icons.video_camera_front_outlined),
-          label: const Text('Upload Video Proof',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(50),
-            foregroundColor: AppColors.info,
-            side: const BorderSide(color: AppColors.info),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, size: 16, color: AppColors.info),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'For online special pooja bookings, completion proof video is uploaded by admin after the service is marked completed.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 10),

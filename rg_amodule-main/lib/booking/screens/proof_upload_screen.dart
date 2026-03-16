@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../auth/models/auth_state.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../models/role_enum.dart';
 import '../controllers/proof_controller.dart';
 import '../models/proof_model.dart';
 import '../providers/proof_provider.dart';
@@ -26,6 +29,28 @@ class ProofUploadScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+    final isAdmin = authState is AuthAuthenticated && authState.user.role.isAdmin;
+
+    if (!isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Upload Proof',
+              style: TextStyle(fontWeight: FontWeight.w800)),
+          centerTitle: false,
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Only admins can upload proof videos for completed online special pooja bookings.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
     final state = ref.watch(proofUploadProvider(bookingId));
 
     return Scaffold(

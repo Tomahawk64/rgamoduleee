@@ -46,6 +46,12 @@ abstract class ISessionRepository {
     required String userName,
   });
 
+  /// Returns the currently active session that this pandit is in, if any.
+  Future<ConsultationSession?> fetchActiveSessionForPandit({
+    required String panditId,
+    required String panditName,
+  });
+
   /// Creates a scheduled consultation request that can be accepted,
   /// rescheduled, or rejected by the pandit.
   Future<ScheduledConsultationRequest> requestScheduledSession({
@@ -152,6 +158,15 @@ class MockSessionRepository implements ISessionRepository {
   Future<ConsultationSession?> fetchActiveSessionForUser({
     required String userId,
     required String userName,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    return null;
+  }
+
+  @override
+  Future<ConsultationSession?> fetchActiveSessionForPandit({
+    required String panditId,
+    required String panditName,
   }) async {
     await Future.delayed(const Duration(milliseconds: 150));
     return null;

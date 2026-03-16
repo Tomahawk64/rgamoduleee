@@ -97,3 +97,18 @@ final panditScheduledConsultationsProvider =
         .fetchPanditScheduledRequests(panditId);
   },
 );
+
+// ── Pandit Active Session Provider ───────────────────────────────────────────
+//
+// Returns the pandit's currently active live consultation session, if any.
+// Used by the pandit dashboard to show a "Rejoin Chat" button.
+
+final panditActiveSessionProvider =
+    FutureProvider.autoDispose.family<ConsultationSession?, Map<String, String>>(
+  (ref, params) async {
+    return ref.watch(sessionRepositoryProvider).fetchActiveSessionForPandit(
+          panditId: params['panditId']!,
+          panditName: params['panditName'] ?? 'Pandit',
+        );
+  },
+);

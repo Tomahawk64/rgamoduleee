@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../account/models/app_notification.dart';
 import '../../account/repository/notifications_repository.dart';
+import '../../core/utils/supabase_storage_upload_helper.dart';
 import '../models/consultation_session.dart';
 import '../models/pandit_model.dart';
 import '../models/scheduled_consultation_request.dart';
@@ -81,7 +82,7 @@ class WsSessionRepository implements ISessionRepository {
   }) async {
     final row = await _client
         .from('consultations')
-        .select('id,pandit_id,start_ts,duration_minutes,price,status')
+        .select('id,pandit_id,user_id,start_ts,duration_minutes,price,status,user:profiles!consultations_user_id_fkey(full_name)')
         .eq('user_id', userId)
         .eq('status', 'active')
         .order('start_ts', ascending: false)
@@ -94,6 +95,49 @@ class WsSessionRepository implements ISessionRepository {
     final pandit = await SupabasePanditRepository(_client).fetchPandit(panditId);
     if (pandit == null) return null;
 
+    final durationMinutes = row['duration_minutes'] as int? ?? 10;
+    final totalPaise = (((row['price'] as num?)?.toDouble() ?? 99.0) * 100).toInt();
+    final rate = ConsultationRate(
+      duration: durationMinutes,
+      totalPaise: totalPaise,
+    );
+
+    return ConsultationSession(
+      id: row['id'] as String,
+      pandit: pandit,
+      userId: userId,
+      userName: userName,
+      rate: rate,
+      totalSeconds: durationMinutes * 60,
+      status: SessionStatus.connecting,
+      startedAt: DateTime.tryParse(row['start_ts'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  @override
+  Future<ConsultationSession?> fetchActiveSessionForPandit({
+    required String panditId,
+    required String panditName,
+  }) async {
+    final row = await _client
+        .from('consultations')
+        .select(
+          'id,pandit_id,user_id,start_ts,duration_minutes,price,status,'
+          'user:profiles!consultations_user_id_fkey(full_name)',
+        )
+        .eq('pandit_id', panditId)
+        .eq('status', 'active')
+        .order('start_ts', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    if (row == null) return null;
+
+    final pandit = await SupabasePanditRepository(_client).fetchPandit(panditId);
+    if (pandit == null) return null;
+
+    final userId = row['user_id'] as String? ?? '';
+    final userProfile = row['user'] as Map<String, dynamic>? ?? const {};
+    final userName = userProfile['full_name'] as String? ?? 'User';
     final durationMinutes = row['duration_minutes'] as int? ?? 10;
     final totalPaise = (((row['price'] as num?)?.toDouble() ?? 99.0) * 100).toInt();
     final rate = ConsultationRate(
@@ -531,13 +575,23 @@ class WsSessionRepository implements ISessionRepository {
     required String fileExt,
   }) async {
     final ext = fileExt.replaceAll('.', '').toLowerCase();
-    final objectPath = '$sessionId/$senderId/${DateTime.now().millisecondsSinceEpoch}.$ext';
-    await _client.storage.from(_chatMediaBucket).uploadBinary(
-      objectPath,
-      bytes,
-      fileOptions: const FileOptions(upsert: false),
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final contentType = ext == 'png'
+        ? 'image/png'
+        : ext == 'webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+    return SupabaseStorageUploadHelper.uploadImageWithFallback(
+      client: _client,
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+      folder: '$sessionId/$senderId',
+      primaryBucket: _chatMediaBucket,
+      fallbackBuckets: [
+        SupabaseStorageUploadHelper.profileImagesBucket,
+      ],
     );
-    return _client.storage.from(_chatMediaBucket).getPublicUrl(objectPath);
   }
 
   // ── extendSession ────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../auth/providers/auth_provider.dart';
+import '../../consultation/providers/consultation_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/base_scaffold.dart';
@@ -88,6 +89,10 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
                               .toggleConsultation(),
                         ),
                         const SizedBox(height: 16),
+
+                        // ── Active consultation banner ───────────────────────────────
+                        if (user != null)
+                          _ActiveConsultationBanner(panditId: user.id, panditName: user.name),
 
                         // ── Stats row ─────────────────────────────────────
                         _StatsRow(state: state),
@@ -610,6 +615,98 @@ class _EarningsTile extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+// ── Active Consultation Banner ────────────────────────────────────────────────
+//
+// Appears on the pandit dashboard when a user has started a live consultation
+// session with this pandit. The pandit can tap "Join Chat" to enter the session.
+
+class _ActiveConsultationBanner extends ConsumerWidget {
+  const _ActiveConsultationBanner({
+    required this.panditId,
+    required this.panditName,
+  });
+
+  final String panditId;
+  final String panditName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(
+      panditActiveSessionProvider({'panditId': panditId, 'panditName': panditName}),
+    );
+
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error: (e, _) => const SizedBox.shrink(),
+      data: (session) {
+        if (session == null) return const SizedBox.shrink();
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.success.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.success.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              // Pulsing indicator
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: AppColors.success,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Live Consultation Active',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: AppColors.success,
+                      ),
+                    ),
+                    Text(
+                      'User: ${session.userName}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: () => context.push(
+                  Routes.consultationChat,
+                  extra: session,
+                ),
+                icon: const Icon(Icons.chat_rounded, size: 16),
+                label: const Text('Join Chat'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

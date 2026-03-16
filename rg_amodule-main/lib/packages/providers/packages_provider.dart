@@ -13,6 +13,8 @@ const kPackagePageSize = 5;
 // ── Mock Package Repository (for demo mode) ──────────────────────────────────
 
 class _MockPackageRepository implements IPackageRepository {
+  final List<PackageModel> _packages = List.of(kMockPackageList);
+
   @override
   Future<List<PackageModel>> fetchPackages({
     PackageFilter? filter,
@@ -20,19 +22,125 @@ class _MockPackageRepository implements IPackageRepository {
     int pageSize = kPackagePageSize,
   }) async {
     await Future.delayed(const Duration(milliseconds: 300));
-    return kMockPackageList;
+    var list = _packages.where((package) => package.isActive).toList();
+
+    if (filter?.category != null) {
+      list = list.where((package) => package.category == filter!.category).toList();
+    }
+
+    if (filter?.mode != null) {
+      list = list.where((package) {
+        switch (filter!.mode!) {
+          case PackageMode.online:
+            return package.mode == PackageMode.online ||
+                package.mode == PackageMode.both;
+          case PackageMode.offline:
+            return package.mode == PackageMode.offline ||
+                package.mode == PackageMode.both;
+          case PackageMode.both:
+            return package.mode == PackageMode.both;
+        }
+      }).toList();
+    }
+
+    if (filter?.minPrice != null) {
+      list = list
+          .where((package) => package.effectivePrice >= filter!.minPrice!)
+          .toList();
+    }
+    if (filter?.maxPrice != null) {
+      list = list
+          .where((package) => package.effectivePrice <= filter!.maxPrice!)
+          .toList();
+    }
+
+    switch (filter?.sort ?? PackageSort.popularity) {
+      case PackageSort.popularity:
+        list.sort((a, b) => b.bookingCount.compareTo(a.bookingCount));
+      case PackageSort.priceLow:
+        list.sort((a, b) => a.effectivePrice.compareTo(b.effectivePrice));
+      case PackageSort.priceHigh:
+        list.sort((a, b) => b.effectivePrice.compareTo(a.effectivePrice));
+      case PackageSort.rating:
+        list.sort((a, b) => b.rating.compareTo(a.rating));
+      case PackageSort.newest:
+        list.sort((a, b) =>
+            (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+    }
+
+    final start = page * pageSize;
+    if (start >= list.length) return const [];
+    final end = start + pageSize > list.length ? list.length : start + pageSize;
+    return list.sublist(start, end);
+  }
+
+  @override
+  Future<List<PackageModel>> fetchAdminPackages({int limit = 200}) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final list = List<PackageModel>.from(_packages)
+      ..sort((a, b) {
+        final createdComparison =
+            (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0));
+        if (createdComparison != 0) return createdComparison;
+        return a.title.compareTo(b.title);
+      });
+    return list.take(limit).toList();
+  }
+
+  @override
+  Future<PackageModel> createPackage(PackageModel package) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final created = package.copyWith(
+      createdAt: package.createdAt ?? DateTime.now(),
+    );
+    _packages.add(created);
+    return created;
+  }
+
+  @override
+  Future<PackageModel> updatePackage(PackageModel package) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final index = _packages.indexWhere((item) => item.id == package.id);
+    if (index == -1) throw const PackageNotFoundException('unknown');
+    _packages[index] = package;
+    return package;
+  }
+
+  @override
+  Future<void> deletePackage(String id) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    _packages.removeWhere((item) => item.id == id);
+  }
+
+  @override
+  Future<PackageModel> togglePackage(String id,
+      {required bool isActive}) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    final index = _packages.indexWhere((item) => item.id == id);
+    if (index == -1) throw PackageNotFoundException(id);
+    final updated = _packages[index].copyWith(isActive: isActive);
+    _packages[index] = updated;
+    return updated;
   }
 
   @override
   Future<PackageModel> fetchPackageById(String id) async {
     await Future.delayed(const Duration(milliseconds: 200));
-    return kMockPackageList.firstWhere((p) => p.id == id);
+    try {
+      return _packages.firstWhere((package) => package.id == id);
+    } on StateError {
+      throw PackageNotFoundException(id);
+    }
   }
 
   @override
   Future<List<PackageModel>> fetchFeaturedPackages({int limit = 6}) async {
     await Future.delayed(const Duration(milliseconds: 300));
-    return kMockPackageList.where((p) => p.isFeatured || p.isPopular).take(limit).toList();
+    return _packages
+        .where((package) =>
+            package.isActive && (package.isFeatured || package.isPopular))
+        .take(limit)
+        .toList();
   }
 }
 
@@ -60,9 +168,13 @@ final packagesFetchProvider =
 /// Synchronous list accessor used by UI filters.
 /// In production this never falls back to mock data.
 final allPackagesProvider = Provider<List<PackageModel>>((ref) {
-  if (DemoConfig.demoMode) return kMockPackageList;
   final async = ref.watch(packagesFetchProvider);
-  return async.maybeWhen(data: (list) => list, orElse: () => const []);
+  return async.maybeWhen(
+    data: (list) => list,
+    orElse: () => DemoConfig.demoMode
+        ? kMockPackageList.where((package) => package.isActive).toList()
+        : const [],
+  );
 });
 
 /// Featured packages for home screen carousel.
@@ -190,16 +302,15 @@ final hasMorePackagesProvider = Provider<bool>((ref) {
 // ── Single package by id ──────────────────────────────────────────────────────
 final packageByIdProvider =
     FutureProvider.family<PackageModel?, String>((ref, id) async {
-  if (DemoConfig.demoMode) {
-    return kMockPackageList.where((p) => p.id == id).firstOrNull;
-  }
-
   final repo = ref.watch(packageRepositoryProvider);
   try {
     return await repo.fetchPackageById(id);
   } on PackageNotFoundException {
     return null;
   } catch (_) {
+    if (DemoConfig.demoMode) {
+      return kMockPackageList.where((package) => package.id == id).firstOrNull;
+    }
     return null;
   }
 });

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../auth/providers/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../models/role_enum.dart';
 import '../controllers/consultation_controller.dart';
 import '../models/consultation_session.dart';
 import '../providers/consultation_provider.dart';
@@ -23,6 +25,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final _scrollCtrl = ScrollController();
   final _picker = ImagePicker();
   bool _hasText = false;
+  bool _imageUploading = false;
 
   @override
   void initState() {
@@ -70,22 +73,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void _sendMessage() {
     final text = _textCtrl.text.trim();
     if (text.isEmpty) return;
+    final currentUser = ref.read(currentUserProvider);
+    final senderId = currentUser?.id ?? widget.session.userId;
+    final senderName = currentUser?.name ?? widget.session.userName;
+    final isFromPandit = currentUser?.role == UserRole.pandit;
     _textCtrl.clear();
     ref.read(sessionProvider(widget.session).notifier).sendMessage(
           text,
-          widget.session.userId,
-          widget.session.userName,
+          senderId,
+          senderName,
+          isFromPandit: isFromPandit,
         );
     _scrollToBottom();
   }
 
   Future<void> _pickAndSendImage(SessionController ctrl) async {
+    if (_imageUploading) return;
     final file = await _picker.pickImage(
       source: ImageSource.gallery,
       maxWidth: 1800,
       imageQuality: 80,
     );
-    if (file == null) return;
+    if (file == null || !mounted) return;
 
     final bytes = await file.readAsBytes();
     final name = file.name.toLowerCase();
@@ -93,13 +102,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ? 'png'
         : (name.endsWith('.webp') ? 'webp' : 'jpg');
 
-    await ctrl.sendImageMessage(
-      bytes: bytes,
-      fileExt: ext,
-      userId: widget.session.userId,
-      userName: widget.session.userName,
-    );
-    _scrollToBottom();
+    final currentUser = ref.read(currentUserProvider);
+    final senderId = currentUser?.id ?? widget.session.userId;
+    final senderName = currentUser?.name ?? widget.session.userName;
+    final isFromPandit = currentUser?.role == UserRole.pandit;
+
+    setState(() => _imageUploading = true);
+    try {
+      await ctrl.sendImageMessage(
+        bytes: bytes,
+        fileExt: ext,
+        userId: senderId,
+        userName: senderName,
+        isFromPandit: isFromPandit,
+      );
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Image upload failed: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _imageUploading = false);
+    }
   }
 
   @override
@@ -152,7 +181,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   _MessagesList(
                     scrollCtrl: _scrollCtrl,
                     sessionState: sessionState,
-                    selfId: widget.session.userId,
+                    selfId: ref.read(currentUserProvider)?.id ?? widget.session.userId,
                   ),
                   // Connecting overlay
                   if (sessionState.isConnecting)
@@ -176,8 +205,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               controller: _textCtrl,
               hasText: _hasText,
               locked: isExpired,
+              imageUploading: _imageUploading,
               onSend: _sendMessage,
-              onAttach: () => _pickAndSendImage(ctrl),
+              onAttach: _imageUploading ? null : () => _pickAndSendImage(ctrl),
               onExtend: isExpired
                   ? () => _showExtendSheet(context, ctrl)
                   : null,
@@ -546,7 +576,7 @@ class _MessageBubble extends StatelessWidget {
                               width: 220,
                               height: 180,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, _, _) => Container(
                                 width: 220,
                                 height: 180,
                                 color: Colors.black12,
@@ -733,10 +763,12 @@ class _ChatInputBar extends StatelessWidget {
     required this.onSend,
     this.onAttach,
     this.onExtend,
+    this.imageUploading = false,
   });
   final TextEditingController controller;
   final bool hasText;
   final bool locked;
+  final bool imageUploading;
   final VoidCallback onSend;
   final VoidCallback? onAttach;
   final VoidCallback? onExtend;
@@ -755,7 +787,7 @@ class _ChatInputBar extends StatelessWidget {
             : Row(
                 children: [
                   InkWell(
-                    onTap: onAttach,
+                    onTap: imageUploading ? null : onAttach,
                     borderRadius: BorderRadius.circular(24),
                     child: Container(
                       width: 40,
@@ -765,11 +797,19 @@ class _ChatInputBar extends StatelessWidget {
                         color: cs.surfaceContainerHighest,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.image_outlined,
-                        size: 20,
-                        color: AppColors.textSecondary,
-                      ),
+                      child: imageUploading
+                          ? const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.primary,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.image_outlined,
+                              size: 20,
+                              color: AppColors.textSecondary,
+                            ),
                     ),
                   ),
                   // Text field

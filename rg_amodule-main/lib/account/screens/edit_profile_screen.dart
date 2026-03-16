@@ -6,12 +6,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path/path.dart' as path;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../auth/providers/auth_provider.dart';
 import '../../core/providers/supabase_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/supabase_storage_upload_helper.dart';
 import '../../models/role_enum.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -23,8 +23,6 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
-  static const _profileImageBucket = 'profile-images';
-
   final _formKey = GlobalKey<FormState>();
   final _picker = ImagePicker();
   late final TextEditingController _nameCtrl;
@@ -122,7 +120,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     if (picked == null) return;
 
     final bytes = await picked.readAsBytes();
-    final ext = path.extension(picked.name).replaceFirst('.', '').toLowerCase();
+    final dotIdx = picked.name.lastIndexOf('.');
+    final ext = dotIdx != -1
+        ? picked.name.substring(dotIdx + 1).toLowerCase()
+        : 'jpg';
     if (!mounted) return;
 
     setState(() {
@@ -137,31 +138,25 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     setState(() => _uploadingImage = true);
     try {
       final ext = (_avatarExt == null || _avatarExt!.isEmpty) ? 'jpg' : _avatarExt!;
-      final objectPath = '$uid/avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
-      await client.storage.from(_profileImageBucket).uploadBinary(
-            objectPath,
-            _avatarBytes!,
-            fileOptions: FileOptions(
-              upsert: true,
-              contentType: _contentTypeForExt(ext),
-            ),
-          );
-      final publicUrl = client.storage.from(_profileImageBucket).getPublicUrl(objectPath);
-      setState(() => _avatarUrl = publicUrl);
-      return publicUrl;
+      final contentType = ext == 'png'
+          ? 'image/png'
+          : ext == 'webp'
+              ? 'image/webp'
+              : 'image/jpeg';
+      final fileName = 'avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final url = await SupabaseStorageUploadHelper.uploadImageWithFallback(
+        client: client,
+        bytes: _avatarBytes!,
+        fileName: fileName,
+        contentType: contentType,
+        folder: 'avatar',
+        primaryBucket: SupabaseStorageUploadHelper.profileImagesBucket,
+        fallbackBuckets: const [],
+      );
+      setState(() => _avatarUrl = url);
+      return url;
     } finally {
       if (mounted) setState(() => _uploadingImage = false);
-    }
-  }
-
-  String _contentTypeForExt(String ext) {
-    switch (ext.toLowerCase()) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      default:
-        return 'image/jpeg';
     }
   }
 

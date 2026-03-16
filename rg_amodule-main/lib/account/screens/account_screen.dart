@@ -523,9 +523,19 @@ class _AdminAccountView extends ConsumerWidget {
                   title: 'Quick Access',
                   items: [
                     _MenuItem(
-                      icon: Icons.spa,
-                      label: 'Manage Poojas',
+                      icon: Icons.auto_awesome,
+                      label: 'Manage Special Poojas',
                       onTap: () => context.go(Routes.adminPoojas),
+                    ),
+                    _MenuItem(
+                      icon: Icons.temple_hindu,
+                      label: 'Manage Poojas',
+                      onTap: () => context.go(Routes.adminPackages),
+                    ),
+                    _MenuItem(
+                      icon: Icons.shopping_bag_outlined,
+                      label: 'Manage Products',
+                      onTap: () => context.go(Routes.adminProducts),
                     ),
                     _MenuItem(
                       icon: Icons.people,

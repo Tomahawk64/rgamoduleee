@@ -307,6 +307,7 @@ class SupabaseAdminRepository implements IAdminRepository {
   static const _kBookingSelect = '''
     id,
     package_title,
+    special_pooja_id,
     booking_date,
     status,
     amount,
@@ -1029,6 +1030,7 @@ class SupabaseAdminRepository implements IAdminRepository {
       scheduledAt:  DateTime.tryParse(
               row['booking_date'] as String? ?? '') ??
           DateTime.now(),
+      specialPoojaId: row['special_pooja_id'] as String?,
       userId:    row['user_id']   as String?,
       panditId:  row['pandit_id'] as String?,
     );

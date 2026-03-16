@@ -56,12 +56,6 @@ const List<HeroSlide> kHeroSlides = [
 // ── Categories ────────────────────────────────────────────────────────────────
 const List<CategoryItem> kCategories = [
   CategoryItem(
-    label: 'Puja',
-    icon: Icons.auto_awesome,
-    color: Color(0xFFFF6B35),
-    route: '/services',
-  ),
-  CategoryItem(
     label: 'Astrology',
     icon: Icons.stars_rounded,
     color: Color(0xFF2D4A8A),
@@ -74,9 +68,9 @@ const List<CategoryItem> kCategories = [
     route: '/special',
   ),
   CategoryItem(
-    label: 'Packages',
-    icon: Icons.folder_special_rounded,
-    color: Color(0xFF6A1B9A),
+    label: 'Pooja',
+    icon: Icons.temple_hindu_rounded,
+    color: Color(0xFFD4611A),
     route: '/packages',
   ),
   CategoryItem(

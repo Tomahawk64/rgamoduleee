@@ -10,20 +10,10 @@ import '../../consultation/providers/consultation_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../packages/providers/packages_provider.dart';
-import '../../packages/widgets/package_list_card.dart';
 import '../../packages/models/package_model.dart';
-import '../../widgets/loading_shimmer.dart';
 import '../models/home_mock_data.dart';
-import '../models/home_models.dart';
 import '../widgets/category_grid.dart';
 import '../widgets/hero_slider.dart';
-import '../widgets/pandit_card.dart';
-
-// ── Online / Offline filter state ─────────────────────────────────────────────
-enum PanditFilter { all, online, offline }
-
-final _panditFilterProvider =
-    StateProvider<PanditFilter>((_) => PanditFilter.all);
 
 // ── Home Screen ────────────────────────────────────────────────────────────────
 class HomeScreen extends ConsumerWidget {
@@ -77,7 +67,12 @@ class HomeScreen extends ConsumerWidget {
                 CategoryGrid(
                   categories: kCategories,
                   onCategoryTap: (cat) {
-                    if (cat.route != null) context.push(cat.route!);
+                    if (cat.route == null) return;
+                    if (cat.route == Routes.packages) {
+                      context.go(cat.route!);
+                      return;
+                    }
+                    context.push(cat.route!);
                   },
                 ),
                 const SizedBox(height: 18),
@@ -269,52 +264,6 @@ class _LiveConsultantCard extends StatelessWidget {
   }
 }
 
-// ── Featured Packages (Supabase-driven) ───────────────────────────────────────
-
-class _FeaturedPackagesSliver extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(featuredPackagesProvider);
-
-    return async.when(
-      loading: () => const SliverToBoxAdapter(child: ListShimmer(itemCount: 3)),
-      error: (_, _) => SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: Text(
-              'Unable to load packages. Check your connection.',
-              style: TextStyle(color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-      data: (packages) {
-        if (packages.isEmpty) {
-          // Graceful fallback to mock data while DB is empty
-          return SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Text(
-                'No featured packages yet.',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
-          );
-        }
-        return SliverList.builder(
-          itemCount: packages.length,
-          itemBuilder: (_, i) => PackageListCard(
-            package: packages[i],
-            onTap: () => context.push('/booking/wizard'),
-          ),
-        );
-      },
-    );
-  }
-}
-
 // ── App Bar ────────────────────────────────────────────────────────────────────
 class _HomeAppBar extends ConsumerWidget {
   const _HomeAppBar({required this.userName});
@@ -444,141 +393,6 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ── Online/Offline toggle ──────────────────────────────────────────────────────
-class _PanditFilterToggle extends StatelessWidget {
-  const _PanditFilterToggle({
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final PanditFilter selected;
-  final ValueChanged<PanditFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.divider,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        padding: const EdgeInsets.all(4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: PanditFilter.values.map((f) {
-            final isSelected = selected == f;
-            return GestureDetector(
-              onTap: () => onChanged(f),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-                decoration: BoxDecoration(
-                  color: isSelected ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (f == PanditFilter.online)
-                      Container(
-                        width: 8,
-                        height: 8,
-                        margin: const EdgeInsets.only(right: 5),
-                        decoration: const BoxDecoration(
-                          color: AppColors.success,
-                          shape: BoxShape.circle,
-                        ),
-                      )
-                    else if (f == PanditFilter.offline)
-                      Container(
-                        width: 8,
-                        height: 8,
-                        margin: const EdgeInsets.only(right: 5),
-                        decoration: const BoxDecoration(
-                          color: AppColors.textHint,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    Text(
-                      _label(f),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected
-                            ? AppColors.textPrimary
-                            : AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  String _label(PanditFilter f) {
-    switch (f) {
-      case PanditFilter.all:
-        return 'All';
-      case PanditFilter.online:
-        return 'Online';
-      case PanditFilter.offline:
-        return 'Offline';
-    }
-  }
-}
-
-// ── Pandit horizontal list ─────────────────────────────────────────────────────
-class _PanditList extends StatelessWidget {
-  const _PanditList({required this.pandits});
-
-  final List<MockPandit> pandits;
-
-  @override
-  Widget build(BuildContext context) {
-    if (pandits.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: Center(
-          child: Text(
-            'No pandits available right now.',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 228,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: pandits.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, i) => PanditCard(
-          pandit: pandits[i],
-          onTap: () => context.push('/booking/wizard'),
-        ),
-      ),
-    );
-  }
-}
-
 // ── Search ────────────────────────────────────────────────────────────────────
 
 class _PoojaSearchDelegate extends SearchDelegate<String> {
@@ -615,7 +429,7 @@ class _PoojaSearchDelegate extends SearchDelegate<String> {
   @override
   Widget buildResults(BuildContext context) {
     final results = _suggestions
-        .where((s) => s.toLowerCase().contains(query.toLowerCase()))
+        .where((item) => item.toLowerCase().contains(query.toLowerCase()))
         .toList();
     return _buildList(context, results);
   }
@@ -625,7 +439,7 @@ class _PoojaSearchDelegate extends SearchDelegate<String> {
     final filtered = query.isEmpty
         ? _suggestions
         : _suggestions
-            .where((s) => s.toLowerCase().contains(query.toLowerCase()))
+            .where((item) => item.toLowerCase().contains(query.toLowerCase()))
             .toList();
     return _buildList(context, filtered);
   }
@@ -634,131 +448,18 @@ class _PoojaSearchDelegate extends SearchDelegate<String> {
     if (items.isEmpty) {
       return const Center(child: Text('No results found'));
     }
+
     return ListView.builder(
       itemCount: items.length,
-      itemBuilder: (ctx, i) => ListTile(
+      itemBuilder: (ctx, index) => ListTile(
         leading: const Icon(Icons.search, color: AppColors.primary),
-        title: Text(items[i]),
+        title: Text(items[index]),
         onTap: () {
-          query = items[i];
-          close(ctx, items[i]);
-          ctx.push('/booking/wizard', extra: {'search': items[i]});
+          query = items[index];
+          close(ctx, items[index]);
+          ctx.push('/booking/wizard', extra: {'search': items[index]});
         },
       ),
-    );
-  }
-}
-
-// ── Notifications Sheet ───────────────────────────────────────────────────────
-
-void _showNotificationsSheet(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (sheetCtx) => DraggableScrollableSheet(
-      initialChildSize: 0.55,
-      maxChildSize: 0.9,
-      minChildSize: 0.3,
-      expand: false,
-      builder: (scrollCtx, ctrl) => Column(
-        children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.divider,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Text(
-                  'Notifications',
-                  style: GoogleFonts.playfairDisplay(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-              ],
-            ),
-          ),
-          const Divider(),
-          Expanded(
-            child: ListView(
-              controller: ctrl,
-              children: const [
-                _NotificationTile(
-                  icon: Icons.check_circle_outline,
-                  color: AppColors.success,
-                  title: 'Booking Confirmed',
-                  subtitle: 'Your Satyanarayan Puja is confirmed for tomorrow.',
-                  time: '2 hrs ago',
-                ),
-                _NotificationTile(
-                  icon: Icons.payment,
-                  color: AppColors.primary,
-                  title: 'Payment Successful',
-                  subtitle: 'Payment of ₹2,100 received for booking #BK001.',
-                  time: '3 hrs ago',
-                ),
-                _NotificationTile(
-                  icon: Icons.person,
-                  color: AppColors.secondary,
-                  title: 'Pandit Assigned',
-                  subtitle: 'Pt. Ramesh Sharma has been assigned to your booking.',
-                  time: 'Yesterday',
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    required this.time,
-  });
-
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  final String time;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: color.withValues(alpha: 0.12),
-        child: Icon(icon, color: color, size: 20),
-      ),
-      title: Text(title,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Text(subtitle,
-          style:
-              const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-      trailing: Text(time,
-          style:
-              const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
     );
   }
 }

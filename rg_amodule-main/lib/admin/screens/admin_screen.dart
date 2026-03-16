@@ -12,6 +12,7 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/base_scaffold.dart';
 import '../models/admin_models.dart';
+import '../providers/admin_package_catalog_provider.dart';
 import '../providers/admin_providers.dart';
 
 class AdminScreen extends ConsumerWidget {
@@ -20,6 +21,7 @@ class AdminScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(adminProvider);
+    final packageCatalog = ref.watch(adminPackageCatalogProvider);
     final user = ref.watch(currentUserProvider);
 
     // Error snackbar
@@ -38,47 +40,74 @@ class AdminScreen extends ConsumerWidget {
       }
     });
 
+    ref.listen<AdminPackageCatalogState>(adminPackageCatalogProvider,
+        (_, next) {
+      if (next.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(next.error!),
+          backgroundColor: AppColors.error,
+          action: SnackBarAction(
+            label: 'Dismiss',
+            textColor: Colors.white,
+            onPressed: () =>
+                ref.read(adminPackageCatalogProvider.notifier).clearError(),
+          ),
+        ));
+      }
+    });
+
     return BaseScaffold(
       title: 'Admin Panel',
       actions: [
         IconButton(
           icon: const Icon(Icons.refresh_rounded),
           tooltip: 'Refresh',
-          onPressed: state.loading
+          onPressed: state.loading || packageCatalog.loading
               ? null
-              : () => ref.read(adminProvider.notifier).load(),
+              : () {
+                  ref.read(adminProvider.notifier).load();
+                  ref.read(adminPackageCatalogProvider.notifier).load();
+                },
         ),
       ],
       body: state.loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: () => ref.read(adminProvider.notifier).load(),
+              onRefresh: () async {
+                await Future.wait([
+                  ref.read(adminProvider.notifier).load(),
+                  ref.read(adminPackageCatalogProvider.notifier).load(),
+                ]);
+              },
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
                 children: [
                   // ── Admin identity badge ──────────────────────────────────
                   _AdminBadge(userName: user?.name ?? ''),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
                   // ── Demo mode indicator ───────────────────────────────────
                   if (DemoConfig.demoMode) const _DemoModeBanner(),
-                  const SizedBox(height: 20),
+                  if (DemoConfig.demoMode) const SizedBox(height: 10),
 
                   // ── Stats grid ────────────────────────────────────────────
                   if (state.report != null)
                     _StatsGrid(report: state.report!),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
 
                   // ── Section label ─────────────────────────────────────────
                   const _SectionLabel(
-                    icon: Icons.dashboard_rounded,
-                    title: 'Management Modules',
+                    icon: Icons.widgets_rounded,
+                    title: 'Operations',
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
                   // ── Module grid ───────────────────────────────────────────
-                  _ModuleGrid(state: state),
-                  const SizedBox(height: 20),
+                  _ModuleGrid(
+                    state: state,
+                    packageCatalog: packageCatalog,
+                  ),
+                  const SizedBox(height: 14),
 
                   // ── Quick report preview ──────────────────────────────────
                   if (state.report != null)
@@ -103,25 +132,38 @@ class _AdminBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.25)),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF8C2A17), Color(0xFFD4611A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.28),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: AppColors.error.withValues(alpha: 0.1),
+              color: Colors.white.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.admin_panel_settings_rounded,
-                color: AppColors.error, size: 24),
+            child: const Icon(
+              Icons.admin_panel_settings_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,16 +172,16 @@ class _AdminBadge extends StatelessWidget {
                   'Administrator Access',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    color: Colors.white,
                   ),
                 ),
                 if (userName.isNotEmpty)
                   Text(
                     'Signed in as $userName',
                     style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      color: Color(0xFFFEEDE2),
                     ),
                   ),
               ],
@@ -147,9 +189,9 @@ class _AdminBadge extends StatelessWidget {
           ),
           Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: AppColors.error.withValues(alpha: 0.1),
+              color: Colors.white.withValues(alpha: 0.22),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
@@ -157,7 +199,7 @@ class _AdminBadge extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
-                color: AppColors.error,
+                color: Colors.white,
                 letterSpacing: 1.2,
               ),
             ),
@@ -213,57 +255,17 @@ class _StatsGrid extends StatelessWidget {
       ),
     ];
 
-    return GridView.count(
+    return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      childAspectRatio: 1.6,
-      children: [
-        ...items.take(4).map((i) => _StatCard(item: i)),
-        // Last card spans full width using a different approach
-        Container(
-          decoration: BoxDecoration(
-            color: items.last.color.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: items.last.color.withValues(alpha: 0.2),
-            ),
-          ),
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Icon(items.last.icon,
-                  size: 18, color: items.last.color),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      items.last.value,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 22,
-                        color: items.last.color,
-                      ),
-                    ),
-                    Text(
-                      items.last.label,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 2.15,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) => _StatCard(item: items[index]),
     );
   }
 }
@@ -289,46 +291,62 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
       decoration: BoxDecoration(
         color: item.color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: item.color.withValues(alpha: 0.2)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(item.icon, size: 14, color: item.color),
-              const Spacer(),
-              Text(
-                item.value,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 22,
-                  color: item.color,
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(item.icon, size: 14, color: item.color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  item.value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: item.color,
+                    height: 1.0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+              Text(
+                item.label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textSecondary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            item.label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
+                if (item.sub != null)
+                  Text(
+                    item.sub!,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: item.color.withValues(alpha: 0.78),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
             ),
           ),
-          if (item.sub != null)
-            Text(
-              item.sub!,
-              style: TextStyle(
-                fontSize: 9,
-                color: item.color.withValues(alpha: 0.7),
-              ),
-            ),
         ],
       ),
     );
@@ -338,8 +356,13 @@ class _StatCard extends StatelessWidget {
 // ── Module grid ───────────────────────────────────────────────────────────────
 
 class _ModuleGrid extends StatelessWidget {
-  const _ModuleGrid({required this.state});
+  const _ModuleGrid({
+    required this.state,
+    required this.packageCatalog,
+  });
+
   final AdminState state;
+  final AdminPackageCatalogState packageCatalog;
 
   @override
   Widget build(BuildContext context) {
@@ -352,14 +375,26 @@ class _ModuleGrid extends StatelessWidget {
 
     final modules = [
       _ModuleItem(
-        title: 'Manage Poojas',
+        title: 'Manage Special Poojas',
         subtitle: '${state.poojas.length} listings',
-        icon: Icons.temple_hindu_rounded,
-        color: AppColors.primary,
+        icon: Icons.auto_awesome_rounded,
+        color: AppColors.secondary,
         badge: state.poojas.where((p) => !p.isActive).isNotEmpty
             ? '${state.poojas.where((p) => !p.isActive).length} inactive'
             : null,
         route: Routes.adminPoojas,
+      ),
+      _ModuleItem(
+        title: 'Manage Poojas',
+        subtitle: packageCatalog.loading && packageCatalog.packages.isEmpty
+            ? 'Loading catalogue…'
+            : '${packageCatalog.packages.length} listings',
+        icon: Icons.temple_hindu_rounded,
+        color: AppColors.primary,
+        badge: packageCatalog.packages.where((p) => !p.isActive).isNotEmpty
+            ? '${packageCatalog.packages.where((p) => !p.isActive).length} inactive'
+            : null,
+        route: Routes.adminPackages,
       ),
       _ModuleItem(
         title: 'Manage Pandits',
@@ -417,9 +452,9 @@ class _ModuleGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.3,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 2.05,
       ),
       itemCount: modules.length,
       itemBuilder: (ctx, i) => _ModuleCard(
@@ -455,81 +490,94 @@ class _ModuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
+            border:
+                Border.all(color: item.color.withValues(alpha: 0.16)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: item.color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child:
-                      Icon(item.icon, size: 18, color: item.color),
-                ),
-                const Spacer(),
-                Icon(Icons.arrow_forward_ios,
-                    size: 12, color: AppColors.textHint),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              item.title,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: AppColors.textPrimary,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              item.subtitle,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            if (item.badge != null) ...[
-              const Spacer(),
+          child: Row(
+            children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 2),
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
-                  color: (item.badgeColor ?? item.color)
-                      .withValues(alpha: 0.12),
+                  color: item.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  item.badge!,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: item.badgeColor ?? item.color,
-                  ),
+                child: Icon(item.icon, size: 16, color: item.color),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      item.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: AppColors.textPrimary,
+                        height: 1.1,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.subtitle,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textSecondary,
+                        height: 1.1,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
+              if (item.badge != null)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (item.badgeColor ?? item.color)
+                        .withValues(alpha: 0.13),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    item.badge!,
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                      color: item.badgeColor ?? item.color,
+                    ),
+                  ),
+                ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 11,
+                color: item.color.withValues(alpha: 0.65),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -550,14 +598,14 @@ class _ReportPreview extends StatelessWidget {
         .fold<int>(0, (m, p) => p.revenuePaise > m ? p.revenuePaise : m);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -574,8 +622,8 @@ class _ReportPreview extends StatelessWidget {
                 child: Text(
                   'Revenue Trend (6 months)',
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
                   ),
                 ),
               ),
@@ -591,7 +639,7 @@ class _ReportPreview extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: report.revenueHistory.map((p) {
@@ -604,12 +652,12 @@ class _ReportPreview extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       SizedBox(
-                        height: 60,
+                        height: 44,
                         child: Align(
                           alignment: Alignment.bottomCenter,
                           child: Container(
                             height:
-                                (frac * 56).clamp(4.0, 56.0),
+                                (frac * 40).clamp(4.0, 40.0),
                             decoration: BoxDecoration(
                               color: p.month ==
                                       report.revenueHistory
@@ -623,7 +671,7 @@ class _ReportPreview extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         p.month,
                         style: const TextStyle(
@@ -637,7 +685,7 @@ class _ReportPreview extends StatelessWidget {
               );
             }).toList(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
@@ -715,10 +763,10 @@ class _DemoModeBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.info.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -734,14 +782,14 @@ class _DemoModeBanner extends StatelessWidget {
                   'Demo Mode Active',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                    fontSize: 11,
                     color: AppColors.info,
                   ),
                 ),
                 const Text(
                   'Destructive actions are disabled. Data is pre-seeded.',
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 9,
                     color: AppColors.textSecondary,
                   ),
                 ),

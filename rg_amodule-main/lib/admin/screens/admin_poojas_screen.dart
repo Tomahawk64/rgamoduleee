@@ -8,21 +8,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/demo_config.dart';
 import '../../core/providers/supabase_provider.dart';
+import '../../core/utils/supabase_storage_upload_helper.dart';
 import '../models/admin_models.dart';
-import '../../packages/models/package_model.dart';
 import '../providers/admin_providers.dart';
 
-const _kPoojaImageBucket = 'special-pooja-images';
 const _kMaxPoojaImageBytes = 5 * 1024 * 1024;
 const _kPoojaImageGuidance =
   'Recommended size: 1600x900 px (16:9). Keep key subject centered so it crops cleanly in cards.';
-
 class AdminPoojasScreen extends ConsumerStatefulWidget {
   const AdminPoojasScreen({super.key});
 
@@ -58,7 +55,7 @@ class _AdminPoojasScreenState extends ConsumerState<AdminPoojasScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Manage Poojas',
+        title: const Text('Manage Special Poojas',
             style: TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: Colors.white,
         foregroundColor: AppColors.textPrimary,
@@ -78,7 +75,7 @@ class _AdminPoojasScreenState extends ConsumerState<AdminPoojasScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showPoojaDialog(context, ref, null),
         icon: const Icon(Icons.add),
-        label: const Text('Add Pooja'),
+        label: const Text('Add Special Pooja'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
@@ -90,7 +87,7 @@ class _AdminPoojasScreenState extends ConsumerState<AdminPoojasScreen> {
             child: TextField(
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
-                hintText: 'Search poojas…',
+                hintText: 'Search special poojas…',
                 prefixIcon: const Icon(Icons.search, size: 18),
                 filled: true,
                 fillColor: Colors.white,
@@ -125,7 +122,7 @@ class _AdminPoojasScreenState extends ConsumerState<AdminPoojasScreen> {
                 const SizedBox(width: 8),
                 _PillChip(
                     label:
-                        '${state.poojas.where((p) => p.isOnlineAvailable).length} Online-ready',
+                        '${state.poojas.where((p) => p.isOnlineAvailable).length} Livestream-ready',
                     color: AppColors.info),
               ],
             ),
@@ -135,7 +132,7 @@ class _AdminPoojasScreenState extends ConsumerState<AdminPoojasScreen> {
           Expanded(
             child: poojas.isEmpty
                 ? const Center(
-                    child: Text('No poojas found',
+                child: Text('No special poojas found',
                         style:
                             TextStyle(color: AppColors.textSecondary)))
                 : ListView.separated(
@@ -174,9 +171,9 @@ class _AdminPoojasScreenState extends ConsumerState<AdminPoojasScreen> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete pooja?'),
+        title: const Text('Delete special pooja?'),
         content: Text(
-            '"${pooja.title}" will be permanently removed from listings.'),
+          '"${pooja.title}" will be permanently removed from special pooja listings.'),
         actions: [
           TextButton(
               onPressed: () => ctx.pop(),
@@ -237,26 +234,13 @@ class _AdminPoojasScreenState extends ConsumerState<AdminPoojasScreen> {
     }
 
     final client = ref.read(supabaseClientProvider);
-    final ext = _fileExtension(fileName);
-    final objectPath =
-        'special-poojas/${DateTime.now().millisecondsSinceEpoch}_${const Uuid().v4()}.$ext';
-
-    await client.storage.from(_kPoojaImageBucket).uploadBinary(
-          objectPath,
-          bytes,
-          fileOptions: FileOptions(
-            contentType: contentType,
-            upsert: false,
-          ),
-        );
-
-    return client.storage.from(_kPoojaImageBucket).getPublicUrl(objectPath);
-  }
-
-  String _fileExtension(String fileName) {
-    final dot = fileName.lastIndexOf('.');
-    if (dot == -1 || dot == fileName.length - 1) return 'jpg';
-    return fileName.substring(dot + 1).toLowerCase();
+    return SupabaseStorageUploadHelper.uploadImageWithFallback(
+      client: client,
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+      folder: 'special-poojas',
+    );
   }
 }
 
@@ -319,7 +303,7 @@ class _PoojaCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    pooja.category.trim().isEmpty ? 'General' : pooja.category,
+                    pooja.category.trim().isEmpty ? 'Special Pooja' : pooja.category,
                     style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
@@ -435,7 +419,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
   final _picker = ImagePicker();
 
   late final TextEditingController _title;
-  PackageCategory _selectedCategory = PackageCategory.puja;
+  late final TextEditingController _significance;
   late final TextEditingController _description;
   late final TextEditingController _imageUrl;
   late final TextEditingController _price;
@@ -449,10 +433,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
     super.initState();
     final p = widget.existing;
     _title = TextEditingController(text: p?.title ?? '');
-    _selectedCategory = PackageCategory.values.firstWhere(
-      (c) => c.label == (p?.category ?? ''),
-      orElse: () => PackageCategory.puja,
-    );
+    _significance = TextEditingController(text: p?.category ?? '');
     _description = TextEditingController(text: p?.description ?? '');
     _imageUrl = TextEditingController(text: p?.imageUrl ?? '');
     _price = TextEditingController(
@@ -467,6 +448,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
   void dispose() {
     for (final c in [
       _title,
+      _significance,
       _description,
       _imageUrl,
       _price,
@@ -493,7 +475,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
             Row(
               children: [
                 Text(
-                  isEdit ? 'Edit Pooja' : 'New Pooja',
+                  isEdit ? 'Edit Special Pooja' : 'New Special Pooja',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
@@ -509,35 +491,12 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
             const SizedBox(height: 16),
             _FormField(controller: _title, label: 'Title'),
             const SizedBox(height: 12),
-            // ── Category dropdown ──────────────────────────────────────
-            DropdownButtonFormField<PackageCategory>(
-              value: _selectedCategory,
-              decoration: InputDecoration(
-                labelText: 'Category',
-                helperText:
-                    'Poojas appear under this filter in the Browse Poojas tab.',
-                helperMaxLines: 2,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              ),
-              items: PackageCategory.values.map((cat) {
-                return DropdownMenuItem<PackageCategory>(
-                  value: cat,
-                  child: Row(
-                    children: [
-                      Icon(cat.icon, size: 18, color: AppColors.primary),
-                      const SizedBox(width: 10),
-                      Text(cat.label),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (cat) {
-                if (cat != null) setState(() => _selectedCategory = cat);
-              },
+            _FormField(
+              controller: _significance,
+              label: 'Significance / Tagline',
+              hintText: 'Blessings, protection, prosperity…',
+              helperText:
+                  'Used as the special-pooja label shown in admin cards.',
             ),
             const SizedBox(height: 12),
             _FormField(
@@ -637,7 +596,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
                 ),
                 Expanded(
                   child: _ToggleRow(
-                    label: 'Online available',
+                    label: 'Online / livestream available',
                     value: _isOnline,
                     onChanged: (v) => setState(() => _isOnline = v),
                   ),
@@ -655,8 +614,9 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child:
-                    Text(isEdit ? 'Save Changes' : 'Create Pooja'),
+                child: Text(
+                  isEdit ? 'Save Changes' : 'Create Special Pooja',
+                ),
               ),
             ),
           ],
@@ -685,7 +645,7 @@ class _PoojaFormSheetState extends State<_PoojaFormSheet> {
     final pooja = AdminPooja(
       id: widget.existing?.id ?? const Uuid().v4(),
       title: _title.text.trim(),
-      category: _selectedCategory.label,
+      category: _significance.text.trim(),
       description: _description.text.trim(),
       imageUrl: imageUrl,
       basePrice: price,

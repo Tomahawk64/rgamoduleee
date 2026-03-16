@@ -22,6 +22,16 @@ abstract class IPackageRepository {
     int pageSize,
   });
 
+  Future<List<PackageModel>> fetchAdminPackages({int limit});
+
+  Future<PackageModel> createPackage(PackageModel package);
+
+  Future<PackageModel> updatePackage(PackageModel package);
+
+  Future<void> deletePackage(String id);
+
+  Future<PackageModel> togglePackage(String id, {required bool isActive});
+
   /// Throws [PackageNotFoundException] if the package does not exist.
   Future<PackageModel> fetchPackageById(String id);
 
@@ -57,6 +67,9 @@ class SupabasePackageRepository implements IPackageRepository {
       isPopular: row['is_popular'] as bool? ?? false,
       isFeatured: row['is_featured'] as bool? ?? false,
       imageUrl: row['image_url'] as String?,
+      createdAt: row['created_at'] != null
+          ? DateTime.tryParse(row['created_at'] as String)
+          : null,
     );
   }
 
@@ -66,6 +79,86 @@ class SupabasePackageRepository implements IPackageRepository {
     if (online && offline) return PackageMode.both;
     if (online) return PackageMode.online;
     return PackageMode.offline;
+  }
+
+  static Map<String, dynamic> _toWriteRow(PackageModel package) {
+    final isOnline =
+        package.mode == PackageMode.online || package.mode == PackageMode.both;
+    final isOffline =
+        package.mode == PackageMode.offline || package.mode == PackageMode.both;
+
+    return {
+      'title': package.title,
+      'description': package.description,
+      'price': package.price,
+      'discount_price': package.discountPrice,
+      'duration_minutes': package.durationMinutes,
+      'is_online': isOnline,
+      'is_offline': isOffline,
+      'category': package.category.name,
+      'includes': package.includes,
+      'image_url': package.imageUrl,
+      'is_active': package.isActive,
+      'is_featured': package.isFeatured,
+      'is_popular': package.isPopular,
+    };
+  }
+
+  @override
+  Future<List<PackageModel>> fetchAdminPackages({int limit = 200}) async {
+    final rows = await _client
+        .from(_table)
+        .select()
+        .order('created_at', ascending: false)
+        .limit(limit);
+
+    return (rows as List)
+        .map((r) => _fromRow(r as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<PackageModel> createPackage(PackageModel package) async {
+    final row = await _client
+        .from(_table)
+        .insert({
+          'id': package.id,
+          ..._toWriteRow(package),
+        })
+        .select()
+        .single();
+
+    return _fromRow(row);
+  }
+
+  @override
+  Future<PackageModel> updatePackage(PackageModel package) async {
+    final row = await _client
+        .from(_table)
+        .update(_toWriteRow(package))
+        .eq('id', package.id)
+        .select()
+        .single();
+
+    return _fromRow(row);
+  }
+
+  @override
+  Future<void> deletePackage(String id) async {
+    await _client.from(_table).delete().eq('id', id);
+  }
+
+  @override
+  Future<PackageModel> togglePackage(String id,
+      {required bool isActive}) async {
+    final row = await _client
+        .from(_table)
+        .update({'is_active': isActive})
+        .eq('id', id)
+        .select()
+        .single();
+
+    return _fromRow(row);
   }
 
   @override

@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../booking/models/booking_status.dart';
 import '../../core/theme/app_colors.dart';
@@ -610,9 +611,44 @@ class _BookingRowState extends State<_BookingRow> {
               ),
             ),
           ],
+
+          if (_canUploadProofVideo(booking)) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => context.push(
+                '/booking/${booking.id}/upload-proof',
+                extra: {
+                  'panditId': booking.panditId ?? '',
+                  'title': booking.packageTitle,
+                },
+              ),
+              icon: const Icon(Icons.video_file_outlined, size: 16),
+              label: const Text(
+                'Upload Proof Video (Max 200 MB)',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.info,
+                side: const BorderSide(color: AppColors.info),
+                minimumSize: const Size(double.infinity, 40),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  bool _canUploadProofVideo(AdminBookingRow booking) {
+    final specialPoojaId = booking.specialPoojaId;
+    final isSpecialPooja = specialPoojaId != null && specialPoojaId.isNotEmpty;
+    return isSpecialPooja &&
+        booking.isOnline &&
+        booking.isPaid &&
+        booking.status == BookingStatus.completed;
   }
 
   void _showPaymentReminderDialog(BuildContext context) {

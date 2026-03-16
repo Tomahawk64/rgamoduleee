@@ -394,8 +394,13 @@ class SessionController extends StateNotifier<SessionState> {
 
   // ── User Actions ──────────────────────────────────────────────────────────
 
-  /// Send a message from the user side.
-  Future<void> sendMessage(String text, String userId, String userName) async {
+  /// Send a message from either the user or the pandit side.
+  Future<void> sendMessage(
+    String text,
+    String userId,
+    String userName, {
+    bool isFromPandit = false,
+  }) async {
     if (state.chatLocked || text.trim().isEmpty) return;
 
     final msg = ChatMessage(
@@ -403,7 +408,7 @@ class SessionController extends StateNotifier<SessionState> {
       senderId: userId,
       senderName: userName,
       text: text.trim(),
-      isFromPandit: false,
+      isFromPandit: isFromPandit,
     );
 
     state = state.copyWith(messages: [...state.messages, msg]);
@@ -417,6 +422,7 @@ class SessionController extends StateNotifier<SessionState> {
     required String userId,
     required String userName,
     String? caption,
+    bool isFromPandit = false,
   }) async {
     if (state.chatLocked) return;
 
@@ -433,7 +439,7 @@ class SessionController extends StateNotifier<SessionState> {
       senderName: userName,
       text: caption?.trim() ?? '',
       imageUrl: imageUrl,
-      isFromPandit: false,
+      isFromPandit: isFromPandit,
     );
 
     state = state.copyWith(messages: [...state.messages, msg]);

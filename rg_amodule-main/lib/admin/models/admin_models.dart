@@ -167,6 +167,7 @@ class AdminBookingRow {
     required this.isPaid,
     required this.isOnline,
     required this.scheduledAt,
+    this.specialPoojaId,
     this.userId,
     this.panditId,
     this.clientPhone,
@@ -185,6 +186,7 @@ class AdminBookingRow {
   final bool isPaid;
   final bool isOnline;
   final DateTime scheduledAt;
+  final String? specialPoojaId;
   final String? userId;
   final String? panditId;
   // Extra user-contact and booking-detail fields
@@ -208,6 +210,7 @@ class AdminBookingRow {
     String? panditId,
     BookingStatus? status,
     bool? isPaid,
+    String? specialPoojaId,
     String? clientPhone,
     String? clientEmail,
     String? timeSlot,
@@ -224,6 +227,7 @@ class AdminBookingRow {
         isPaid: isPaid ?? this.isPaid,
         isOnline: isOnline,
         scheduledAt: scheduledAt,
+        specialPoojaId: specialPoojaId ?? this.specialPoojaId,
         userId: userId,
         panditId: panditId ?? this.panditId,
         clientPhone: clientPhone ?? this.clientPhone,

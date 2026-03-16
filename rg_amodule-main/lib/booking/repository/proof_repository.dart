@@ -112,9 +112,9 @@ abstract class IProofRepository {
 /// Production implementation backed by Supabase Storage and PostgREST.
 ///
 /// Required bucket policies on `pooja-proofs` (RLS):
-///   INSERT — authenticated users where uid() = pandit_id
+///   INSERT — admin users for eligible online special-pooja bookings
 ///   SELECT — authenticated users where uid() = pandit_id OR booking owner
-///   DELETE — admin role or matching pandit
+///   DELETE — admin role
 class SupabaseProofRepository implements IProofRepository {
   SupabaseProofRepository(this._client);
 
@@ -129,6 +129,16 @@ class SupabaseProofRepository implements IProofRepository {
   @override
   Future<ProofModel?> getProofForBooking(String bookingId) async {
     try {
+      final bookingRow = await _client
+          .from('bookings')
+          .select('special_pooja_id, status, is_paid, location')
+          .eq('id', bookingId)
+          .maybeSingle();
+
+      if (bookingRow == null || !_bookingSupportsSpecialPoojaProof(bookingRow)) {
+        return null;
+      }
+
       final row = await _client
           .from('booking_proofs')
           .select()
@@ -139,6 +149,10 @@ class SupabaseProofRepository implements IProofRepository {
 
       // Build model from DB row — URLs are null (paths only in DB).
       final base = _rowToModel(row);
+
+      if (base.isExpired) {
+        return null;
+      }
 
       // Hydrate with fresh 24-h signed URLs before returning.
       return refreshSignedUrls(base);
@@ -154,6 +168,43 @@ class SupabaseProofRepository implements IProofRepository {
     ProofUploadDraft draft, {
     void Function(double progress)? onProgress,
   }) async {
+    final authUser = _client.auth.currentUser;
+    if (authUser == null) {
+      throw const ProofUploadException('You must be signed in to upload proof.');
+    }
+
+    final role = await _resolveCurrentRole();
+    if (role != 'admin') {
+      throw const ProofUploadException(
+        'Only admins can upload proof videos for completed online special pooja bookings.',
+      );
+    }
+
+    final bookingRow = await _client
+        .from('bookings')
+        .select('id, pandit_id, special_pooja_id, status, is_paid, location')
+        .eq('id', draft.bookingId)
+        .maybeSingle();
+    if (bookingRow == null) {
+      throw const ProofUploadException('Booking not found.');
+    }
+    if (!_bookingSupportsSpecialPoojaProof(bookingRow)) {
+      throw const ProofUploadException(
+        'Proof videos are only allowed for completed online special pooja bookings with successful payment.',
+      );
+    }
+
+    final existingProofRow = await _client
+        .from('booking_proofs')
+        .select('id, image_storage_paths')
+        .eq('booking_id', draft.bookingId)
+        .maybeSingle();
+    final existingProofId = existingProofRow?['id'] as String?;
+    final existingImagePaths = List<String>.from(
+      (existingProofRow?['image_storage_paths'] as List?)?.cast<String>() ??
+          const <String>[],
+    );
+
     // One tick per file + one tick for DB insert.
     final totalSteps = 2 + draft.imageLocalPaths.length;
     var step = 0;
@@ -231,12 +282,13 @@ class SupabaseProofRepository implements IProofRepository {
     }
 
     // ── 4. Persist metadata to booking_proofs (paths only, no URLs) ──────────
-    final id = _uuid.v4();
+    final effectivePanditId = (bookingRow['pandit_id'] as String?) ?? authUser.id;
+    final id = existingProofId ?? _uuid.v4();
     final now = DateTime.now().toUtc();
     final model = ProofModel(
       id: id,
       bookingId: draft.bookingId,
-      panditId: draft.panditId,
+      panditId: effectivePanditId,
       videoUrl: videoUrl,
       videoStoragePath: videoStoragePath,
       videoDurationSeconds: draft.videoDurationSeconds,
@@ -246,12 +298,25 @@ class SupabaseProofRepository implements IProofRepository {
     );
 
     try {
-      await _client.from('booking_proofs').insert(_toDbRow(model));
+      await _client
+          .from('booking_proofs')
+          .upsert(_toDbRow(model), onConflict: 'booking_id');
     } on PostgrestException catch (e) {
       throw ProofUploadException(
           'Failed to save proof record: ${e.message}');
     }
     tick();
+
+    final staleImagePaths = existingImagePaths
+        .where((path) => !imageStoragePaths.contains(path))
+        .toList(growable: false);
+    if (staleImagePaths.isNotEmpty) {
+      try {
+        await _storage.from(_kBucket).remove(staleImagePaths);
+      } catch (_) {
+        // Ignore best-effort cleanup failures for old assets.
+      }
+    }
 
     return model;
   }
@@ -290,6 +355,12 @@ class SupabaseProofRepository implements IProofRepository {
 
   @override
   Future<ProofModel> refreshSignedUrls(ProofModel proof) async {
+    if (proof.isExpired) {
+      throw const ProofUploadException(
+        'Proof video visibility has expired after 10 days.',
+      );
+    }
+
     try {
       final videoUrl = proof.videoStoragePath != null
           ? await _createSignedUrl(proof.videoStoragePath!)
@@ -315,6 +386,38 @@ class SupabaseProofRepository implements IProofRepository {
     return _storage
         .from(_kBucket)
         .createSignedUrl(storagePath, _kSignedUrlExpiry);
+  }
+
+  Future<String> _resolveCurrentRole() async {
+    final result = await _client.rpc('get_my_role');
+    if (result is String) return result.toLowerCase();
+    if (result is List && result.isNotEmpty && result.first is String) {
+      return (result.first as String).toLowerCase();
+    }
+    if (result is Map && result['get_my_role'] is String) {
+      return (result['get_my_role'] as String).toLowerCase();
+    }
+    return '';
+  }
+
+  bool _bookingSupportsSpecialPoojaProof(Map<String, dynamic> bookingRow) {
+    final specialPoojaId = bookingRow['special_pooja_id'] as String?;
+    final status = bookingRow['status'] as String?;
+    final isPaid = bookingRow['is_paid'] as bool? ?? false;
+    final location = _asMap(bookingRow['location']);
+    final isOnline = location['is_online'] as bool? ?? false;
+
+    return specialPoojaId != null &&
+        specialPoojaId.isNotEmpty &&
+        isOnline &&
+        isPaid &&
+        status == 'completed';
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const <String, dynamic>{};
   }
 
   /// Reads bytes from [rawBytes] (priority) or [localPath], enforcing
@@ -423,7 +526,10 @@ class MockProofRepository implements IProofRepository {
   @override
   Future<ProofModel?> getProofForBooking(String bookingId) async {
     await Future.delayed(const Duration(milliseconds: 350));
-    return _store[bookingId];
+    final proof = _store[bookingId];
+    if (proof == null) return null;
+    if (proof.isExpired) return null;
+    return proof;
   }
 
   @override

@@ -1,11 +1,15 @@
 // lib/admin/screens/admin_products_screen.dart
 // CRUD management for Shop Products — accessible only to admin.
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../core/providers/supabase_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/supabase_storage_upload_helper.dart';
 import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
 
@@ -17,6 +21,9 @@ const _kCategories = [
   'spiritual',
 ];
 
+const _kMaxProductImageBytes = 5 * 1024 * 1024;
+const _kProductImageGuidance =
+    'Recommended size: 1600x900 px (16:9). Keep the kit centered so it crops cleanly in product cards.';
 String _normalizeProductCategory(String? raw) {
   final value = (raw ?? '').trim().toLowerCase();
   switch (value) {
@@ -258,6 +265,7 @@ class _AdminProductsScreenState
       backgroundColor: Colors.transparent,
       builder: (_) => _ProductFormSheet(
         existing: existing,
+        onUploadImage: _uploadProductImage,
         onSave: (product) {
           if (existing == null) {
             ref.read(adminProvider.notifier).createProduct(product);
@@ -266,6 +274,32 @@ class _AdminProductsScreenState
           }
         },
       ),
+    );
+  }
+
+  Future<String> _uploadProductImage(
+    Uint8List bytes,
+    String fileName,
+    String contentType,
+  ) async {
+    if (bytes.isEmpty) {
+      throw Exception('Selected file is empty. Please choose another image.');
+    }
+
+    if (bytes.lengthInBytes > _kMaxProductImageBytes) {
+      throw Exception(
+        'Image is too large. Maximum allowed size is '
+        '${_kMaxProductImageBytes ~/ (1024 * 1024)} MB.',
+      );
+    }
+
+    final client = ref.read(supabaseClientProvider);
+    return SupabaseStorageUploadHelper.uploadImageWithFallback(
+      client: client,
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+      folder: 'products',
     );
   }
 }
@@ -487,11 +521,20 @@ class _MetaChip extends StatelessWidget {
 
 // ── Product form sheet ─────────────────────────────────────────────────────────
 
+typedef _UploadProductImage = Future<String> Function(
+  Uint8List bytes,
+  String fileName,
+  String contentType,
+);
+
 class _ProductFormSheet extends StatefulWidget {
   const _ProductFormSheet(
-      {required this.existing, required this.onSave});
+      {required this.existing,
+      required this.onSave,
+      required this.onUploadImage});
   final AdminProduct? existing;
   final ValueChanged<AdminProduct> onSave;
+  final _UploadProductImage onUploadImage;
 
   @override
   State<_ProductFormSheet> createState() => _ProductFormSheetState();
@@ -499,15 +542,19 @@ class _ProductFormSheet extends StatefulWidget {
 
 class _ProductFormSheetState extends State<_ProductFormSheet> {
   final _formKey = GlobalKey<FormState>();
+  final _picker = ImagePicker();
+
   late final TextEditingController _name;
   late final TextEditingController _desc;
   late final TextEditingController _price;
   late final TextEditingController _stock;
+  late final TextEditingController _includes;
   late final TextEditingController _imageUrl;
   late String _category;
   late bool _isBestSeller;
   late bool _isActive;
   bool _saving = false;
+  bool _uploadingImage = false;
 
   @override
   void initState() {
@@ -519,6 +566,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
         text: p != null ? (p.pricePaise / 100).toStringAsFixed(2) : '');
     _stock      = TextEditingController(
         text: p != null ? p.stock.toString() : '');
+    _includes   = TextEditingController(text: p?.includes.join('\n') ?? '');
     _imageUrl   = TextEditingController(text: p?.imageUrl ?? '');
     _category   = _normalizeProductCategory(p?.category);
     _isBestSeller = p?.isBestSeller ?? false;
@@ -531,12 +579,21 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
     _desc.dispose();
     _price.dispose();
     _stock.dispose();
+    _includes.dispose();
     _imageUrl.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    final imageText = _imageUrl.text.trim();
+    final imageUrl = imageText.isEmpty ? null : imageText;
+    if (imageUrl != null && !_looksLikeValidImageSource(imageUrl)) {
+      _showError('Please upload a valid product image before saving.');
+      return;
+    }
+
     setState(() => _saving = true);
 
     final pricePaise = (double.tryParse(_price.text) ?? 0) * 100;
@@ -549,8 +606,8 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
       pricePaise: pricePaise.round(),
       category: _category,
       stock: stock,
-      imageUrl: _imageUrl.text.trim().isEmpty ? null : _imageUrl.text.trim(),
-      includes: widget.existing?.includes ?? const [],
+      imageUrl: imageUrl,
+      includes: _parseIncludes(_includes.text),
       isBestSeller: _isBestSeller,
       isActive: _isActive,
       createdAt: widget.existing?.createdAt ?? DateTime.now(),
@@ -700,7 +757,7 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                     // Category
                     _label('Category'),
                     DropdownButtonFormField<String>(
-                      value: _category,
+                      initialValue: _category,
                       items: categoryItems
                           .map((c) => DropdownMenuItem(
                               value: c,
@@ -713,13 +770,142 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Image URL
-                    _label('Image URL (optional)'),
+                    // What's included
+                    _label("What's Included"),
                     TextFormField(
-                      controller: _imageUrl,
-                      keyboardType: TextInputType.url,
+                      controller: _includes,
+                      maxLines: 5,
+                      textCapitalization: TextCapitalization.sentences,
                       decoration: _decor(
-                          'https://example.com/product.jpg'),
+                        'One item per line, e.g.\nBrass Kalash\nMango Leaves\nRed Cloth Set',
+                      ).copyWith(
+                        helperText:
+                            'These items are shown in the product details under "What\'s Included".',
+                        helperMaxLines: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Product image upload
+                    _label('Product Image'),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Upload the kit image directly instead of pasting a link.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            _kProductImageGuidance,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed:
+                                    _uploadingImage ? null : _pickFromGallery,
+                                icon: const Icon(
+                                  Icons.photo_library_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Upload From Gallery'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed:
+                                    _uploadingImage ? null : _pickFromFiles,
+                                icon: const Icon(
+                                  Icons.folder_open_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Upload From Files'),
+                              ),
+                              if (_uploadingImage)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 10,
+                                  ),
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _imageUrl,
+                            builder: (context, value, child) {
+                              final image = value.text.trim();
+                              if (image.isEmpty) {
+                                return const Text(
+                                  'No image selected yet.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                );
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        'Preview',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      TextButton.icon(
+                                        onPressed: _uploadingImage
+                                            ? null
+                                            : () => _imageUrl.clear(),
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 16,
+                                        ),
+                                        label: const Text('Remove Image'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _ProductImage(
+                                    imageUrl: image,
+                                    height: 110,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -799,4 +985,150 @@ class _ProductFormSheetState extends State<_ProductFormSheet> {
           borderSide: const BorderSide(color: AppColors.border),
         ),
       );
+
+  List<String> _parseIncludes(String raw) {
+    return raw
+        .split(RegExp(r'[,\n]+'))
+        .map((item) => item.trim())
+        .map((item) => item.replaceFirst(RegExp(r'^[-*\u2022]\s*'), ''))
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> _pickFromGallery() async {
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+        maxWidth: 2000,
+      );
+      if (picked == null) return;
+
+      final bytes = await picked.readAsBytes();
+      await _uploadPickedImage(bytes, picked.name);
+    } catch (e) {
+      _showError('Could not pick image from gallery: $e');
+    }
+  }
+
+  Future<void> _pickFromFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+        withData: true,
+      );
+      final file = (result != null && result.files.isNotEmpty)
+          ? result.files.first
+          : null;
+      if (file == null || file.bytes == null) return;
+
+      await _uploadPickedImage(file.bytes!, file.name);
+    } catch (e) {
+      _showError('Could not pick image file: $e');
+    }
+  }
+
+  Future<void> _uploadPickedImage(Uint8List bytes, String fileName) async {
+    if (bytes.lengthInBytes > _kMaxProductImageBytes) {
+      _showError(
+        'Image is too large. Max allowed size is '
+        '${_kMaxProductImageBytes ~/ (1024 * 1024)} MB.',
+      );
+      return;
+    }
+
+    final contentType = _contentTypeFor(fileName);
+
+    setState(() => _uploadingImage = true);
+    try {
+      final uploadedUrl =
+          await widget.onUploadImage(bytes, fileName, contentType);
+      if (!mounted) return;
+      _imageUrl.text = uploadedUrl;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Image uploaded successfully.'),
+          behavior: SnackBarBehavior.floating,
+        ));
+    } catch (e) {
+      _showError('Image upload failed: $e');
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  String _contentTypeFor(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  bool _looksLikeValidImageSource(String value) {
+    if (value.startsWith('assets/')) return true;
+    final uri = Uri.tryParse(value);
+    if (uri == null) return false;
+    final validScheme = uri.scheme == 'http' || uri.scheme == 'https';
+    return validScheme && uri.host.isNotEmpty;
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+}
+
+class _ProductImage extends StatelessWidget {
+  const _ProductImage({
+    required this.imageUrl,
+    required this.height,
+    required this.borderRadius,
+  });
+
+  final String imageUrl;
+  final double height;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final source = imageUrl.trim();
+    final isAsset = source.startsWith('assets/');
+
+    Widget fallback() {
+      return Container(
+        color: AppColors.background,
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.image_not_supported_outlined,
+          color: AppColors.textSecondary,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: SizedBox(
+        width: double.infinity,
+        height: height,
+        child: isAsset
+            ? Image.asset(
+                source,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => fallback(),
+              )
+            : Image.network(
+                source,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => fallback(),
+              ),
+      ),
+    );
+  }
 }

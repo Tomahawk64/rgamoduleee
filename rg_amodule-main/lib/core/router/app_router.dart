@@ -25,6 +25,7 @@ import '../../shop/screens/product_detail_screen.dart';
 import '../../shop/screens/cart_screen.dart';
 import '../../shop/screens/checkout_screen.dart';
 import '../../admin/screens/admin_screen.dart';
+import '../../admin/screens/admin_packages_screen.dart';
 import '../../admin/screens/admin_poojas_screen.dart';
 import '../../admin/screens/admin_pandits_screen.dart';
 import '../../admin/screens/admin_bookings_screen.dart';
@@ -77,6 +78,7 @@ abstract class Routes {
   // Admin sub-routes (nested under /account/admin)
   static const adminBase = '/account/admin';
   static const adminPoojas = '/account/admin/poojas';
+  static const adminPackages = '/account/admin/packages';
   static const adminPandits = '/account/admin/pandits';
   static const adminBookings = '/account/admin/bookings';
   static const adminConsultations = '/account/admin/consultations';
@@ -449,6 +451,15 @@ final routerProvider = Provider<GoRouter>((ref) {
                       pageBuilder: (_, state) => CustomTransitionPage(
                         key: state.pageKey,
                         child: const AdminPoojasScreen(),
+                        transitionsBuilder: _slideRightTransition,
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'packages',
+                      name: 'admin-packages',
+                      pageBuilder: (_, state) => CustomTransitionPage(
+                        key: state.pageKey,
+                        child: const AdminPackagesScreen(),
                         transitionsBuilder: _slideRightTransition,
                       ),
                     ),

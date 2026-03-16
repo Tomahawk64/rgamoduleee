@@ -144,6 +144,54 @@ class PackageModel {
     }
   }
 
+  PackageModel copyWith({
+    String? id,
+    String? title,
+    String? description,
+    double? price,
+    double? discountPrice,
+    bool clearDiscountPrice = false,
+    int? durationMinutes,
+    PackageMode? mode,
+    PackageCategory? category,
+    List<String>? includes,
+    List<ReviewModel>? reviews,
+    double? rating,
+    int? reviewCount,
+    int? bookingCount,
+    bool? isActive,
+    bool? isPopular,
+    bool? isFeatured,
+    String? panditName,
+    bool clearPanditName = false,
+    String? imageUrl,
+    bool clearImageUrl = false,
+    DateTime? createdAt,
+  }) =>
+      PackageModel(
+        id: id ?? this.id,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        price: price ?? this.price,
+        discountPrice: clearDiscountPrice
+            ? null
+            : (discountPrice ?? this.discountPrice),
+        durationMinutes: durationMinutes ?? this.durationMinutes,
+        mode: mode ?? this.mode,
+        category: category ?? this.category,
+        includes: includes ?? this.includes,
+        reviews: reviews ?? this.reviews,
+        rating: rating ?? this.rating,
+        reviewCount: reviewCount ?? this.reviewCount,
+        bookingCount: bookingCount ?? this.bookingCount,
+        isActive: isActive ?? this.isActive,
+        isPopular: isPopular ?? this.isPopular,
+        isFeatured: isFeatured ?? this.isFeatured,
+        panditName: clearPanditName ? null : (panditName ?? this.panditName),
+        imageUrl: clearImageUrl ? null : (imageUrl ?? this.imageUrl),
+        createdAt: createdAt ?? this.createdAt,
+      );
+
   /// Supabase-ready deserialization (reviews fetched separately)
   factory PackageModel.fromJson(
     Map<String, dynamic> json, {

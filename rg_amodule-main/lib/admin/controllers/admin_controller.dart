@@ -175,6 +175,21 @@ class AdminController extends StateNotifier<AdminState> {
     }
   }
 
+  Future<void> updatePanditStats(
+      String id, {required double rating, required int totalSessions}) async {
+    try {
+      final updated = await _repo.updatePanditStats(
+          id, rating: rating, totalSessions: totalSessions);
+      state = state.copyWith(
+        pandits: state.pandits
+            .map((p) => p.id == updated.id ? updated : p)
+            .toList(),
+      );
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
   // ── Bookings ──────────────────────────────────────────────────────────────
 
   Future<void> updateBookingStatus(String id, BookingStatus status) async {

@@ -13,14 +13,13 @@ class PanditAssignment {
 
   final BookingModel booking;
 
-  /// True once the pandit has explicitly accepted the assignment.
+  /// Always false — bookings are auto-accepted when admin assigns a pandit.
   final bool panditAccepted;
 
-  bool get isPendingAction =>
-      booking.status == BookingStatus.assigned && !panditAccepted;
+  // Bookings are auto-accepted on admin assignment — pandit has no pending phase.
+  bool get isPendingAction => false;
 
-  bool get isActive =>
-      panditAccepted && booking.status == BookingStatus.assigned;
+  bool get isActive => booking.status == BookingStatus.assigned;
 
   bool get isCompleted => booking.status == BookingStatus.completed;
   bool get isCancelled => booking.status == BookingStatus.cancelled;
@@ -80,6 +79,7 @@ class PanditProfile {
     required this.yearsExperience,
     required this.languages,
     this.bio,
+    this.avatarUrl,
   });
 
   final String id;
@@ -91,6 +91,7 @@ class PanditProfile {
   final int yearsExperience;
   final List<String> languages;
   final String? bio;
+  final String? avatarUrl;
 
   String get initials {
     final parts = name.trim().split(' ');
@@ -98,7 +99,7 @@ class PanditProfile {
     return name.substring(0, name.length.clamp(0, 2)).toUpperCase();
   }
 
-  PanditProfile copyWith({bool? consultationEnabled}) => PanditProfile(
+  PanditProfile copyWith({bool? consultationEnabled, String? avatarUrl}) => PanditProfile(
         id: id,
         name: name,
         specialties: specialties,
@@ -108,5 +109,6 @@ class PanditProfile {
         yearsExperience: yearsExperience,
         languages: languages,
         bio: bio,
+        avatarUrl: avatarUrl ?? this.avatarUrl,
       );
 }

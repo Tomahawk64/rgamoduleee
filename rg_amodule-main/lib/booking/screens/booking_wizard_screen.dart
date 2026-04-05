@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../auth/providers/auth_provider.dart';
+import '../../core/providers/supabase_provider.dart';
 import '../../packages/models/package_model.dart';
 import '../../packages/providers/packages_provider.dart';
 import '../../payment/payment_provider.dart';
 import '../../payment/payment_service.dart';
+import '../../widgets/country_phone_field.dart';
 import '../models/booking_model.dart';
 import '../models/booking_status.dart';
 import '../models/time_slot_model.dart';
@@ -766,7 +768,58 @@ class _StepLocationState extends ConsumerState<_StepLocation> {
   final _addr2Ctrl   = TextEditingController();
   final _cityCtrl    = TextEditingController();
   final _pincodeCtrl = TextEditingController();
+  final _phoneCtrl   = TextEditingController();
   final _formKey     = GlobalKey<FormState>();
+  CountryDialCode _selectedCountry = kCountryList.first; // default India +91
+  bool _loadingAddress = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prefillFromProfile());
+  }
+
+  Future<void> _prefillFromProfile() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+
+    // Pre-fill phone from profile (strip dial code)
+    if (_phoneCtrl.text.isEmpty && (user.phone ?? '').isNotEmpty) {
+      final raw = user.phone!.replaceAll(RegExp(r'^\+\d{1,3}\s*'), '').trim();
+      _phoneCtrl.text = raw;
+    }
+
+    setState(() => _loadingAddress = true);
+    try {
+      final client = ref.read(supabaseClientProvider);
+      final rows = await client
+          .from('addresses')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_default', true)
+          .limit(1);
+      if (!mounted) return;
+      final list = List<Map<String, dynamic>>.from(rows as List);
+      if (list.isNotEmpty) {
+        final a = list.first;
+        if (_addr1Ctrl.text.isEmpty) {
+          _addr1Ctrl.text = a['address_line'] as String? ?? '';
+        }
+        if (_cityCtrl.text.isEmpty) {
+          _cityCtrl.text = a['city'] as String? ?? '';
+        }
+        if (_pincodeCtrl.text.isEmpty) {
+          _pincodeCtrl.text = a['pincode'] as String? ?? '';
+        }
+        // Trigger validation in wizard after pre-fill
+        _save();
+      }
+    } catch (_) {
+      // silently ignore – user can fill manually
+    } finally {
+      if (mounted) setState(() => _loadingAddress = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -774,6 +827,7 @@ class _StepLocationState extends ConsumerState<_StepLocation> {
     _addr2Ctrl.dispose();
     _cityCtrl.dispose();
     _pincodeCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
@@ -786,8 +840,9 @@ class _StepLocationState extends ConsumerState<_StepLocation> {
             addressLine2: _addr2Ctrl.text.trim().isEmpty
                 ? null
                 : _addr2Ctrl.text.trim(),
-            city:    _cityCtrl.text.trim(),
-            pincode: _pincodeCtrl.text.trim(),
+            city:         _cityCtrl.text.trim(),
+            pincode:      _pincodeCtrl.text.trim(),
+            contactPhone: _selectedCountry.dialCode + _phoneCtrl.text.trim(),
           ),
         );
   }
@@ -878,6 +933,10 @@ class _StepLocationState extends ConsumerState<_StepLocation> {
                   .bodySmall
                   ?.copyWith(color: cs.onSurfaceVariant),
             ),
+            if (_loadingAddress) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
             const SizedBox(height: 20),
             _AddressField(
               ctrl: _addr1Ctrl,
@@ -925,6 +984,44 @@ class _StepLocationState extends ConsumerState<_StepLocation> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Contact Number',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Who should the pandit contact for this booking?',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            CountryPhoneFormField(
+              controller: _phoneCtrl,
+              country: _selectedCountry,
+              onCountryTap: () => showCountryPicker(
+                context: context,
+                selected: _selectedCountry,
+                onSelected: (c) => setState(() {
+                  _selectedCountry = c;
+                  _save();
+                }),
+              ),
+              decoration: InputDecoration(
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: cs.outline),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              ),
             ),
           ],
         ),

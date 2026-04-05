@@ -41,12 +41,7 @@ class PackageListCard extends StatelessWidget {
                     child: _DiscountBadge(
                         percent: package.discountPercent),
                   ),
-                // Mode chip
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: _ModeChip(mode: package.mode),
-                ),
+
               ],
             ),
 

@@ -11,12 +11,6 @@ abstract class IPanditDashboardRepository {
   /// Fetch bookings assigned to [panditId].
   Future<List<PanditAssignment>> fetchAssignments(String panditId);
 
-  /// Accept an assignment (pandit confirms).
-  Future<void> acceptAssignment(String bookingId);
-
-  /// Reject an assignment (returns booking to pending pool).
-  Future<void> rejectAssignment(String bookingId);
-
   /// Update booking status (e.g. assigned → completed).
   Future<void> updateStatus(String bookingId, BookingStatus newStatus);
 
@@ -25,6 +19,9 @@ abstract class IPanditDashboardRepository {
 
   /// Toggle online consultation availability.
   Future<void> setConsultationEnabled(String panditId, {required bool enabled});
+
+  /// Update the pandit's profile photo URL.
+  Future<void> updateAvatarUrl(String panditId, String url);
 
   /// Compute earnings summary from completed bookings.
   Future<EarningsSummary> fetchEarnings(String panditId);
@@ -51,31 +48,6 @@ class MockPanditDashboardRepository implements IPanditDashboardRepository {
   }
 
   @override
-  Future<void> acceptAssignment(String bookingId) async {
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    final idx = _assignments.indexWhere((a) => a.booking.id == bookingId);
-    if (idx >= 0) {
-      _assignments[idx] = _assignments[idx].copyWith(panditAccepted: true);
-    }
-  }
-
-  @override
-  Future<void> rejectAssignment(String bookingId) async {
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    final idx = _assignments.indexWhere((a) => a.booking.id == bookingId);
-    if (idx >= 0) {
-      _assignments[idx] = _assignments[idx].copyWith(
-        booking: _assignments[idx].booking.copyWith(
-          status: BookingStatus.pending,
-          panditId: '',
-          panditName: '',
-        ),
-        panditAccepted: false,
-      );
-    }
-  }
-
-  @override
   Future<void> updateStatus(String bookingId, BookingStatus newStatus) async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     final idx = _assignments.indexWhere((a) => a.booking.id == bookingId);
@@ -97,6 +69,11 @@ class MockPanditDashboardRepository implements IPanditDashboardRepository {
       {required bool enabled}) async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     // In production: update pandit profile in Supabase
+  }
+
+  @override
+  Future<void> updateAvatarUrl(String panditId, String url) async {
+    // No-op in mock
   }
 
   @override

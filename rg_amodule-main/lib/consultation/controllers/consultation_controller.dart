@@ -155,6 +155,7 @@ class SessionState {
     this.extending = false,
     this.extendError,
     this.endRequested = false,
+    this.waitingForPartner = false,
   });
 
   final ConsultationSession session;
@@ -175,6 +176,9 @@ class SessionState {
 
   /// True when end-session confirmation has been requested.
   final bool endRequested;
+
+  /// True when waiting for the other participant to join (scheduled sessions).
+  final bool waitingForPartner;
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -211,6 +215,7 @@ class SessionState {
     bool? extending,
     String? extendError,
     bool? endRequested,
+    bool? waitingForPartner,
     bool clearExtendError = false,
   }) =>
       SessionState(
@@ -222,6 +227,7 @@ class SessionState {
         extending: extending ?? this.extending,
         extendError: clearExtendError ? null : (extendError ?? this.extendError),
         endRequested: endRequested ?? this.endRequested,
+        waitingForPartner: waitingForPartner ?? this.waitingForPartner,
       );
 }
 
@@ -285,10 +291,15 @@ class SessionController extends StateNotifier<SessionState> {
     if (!mounted) return;
 
     switch (event) {
+      case WaitingForPartnerEvent():
+        state = state.copyWith(waitingForPartner: true);
+        _addSystemMessage('Waiting for the other participant to join…');
+
       case SessionStartedEvent():
         _startCountdown();
         state = state.copyWith(
           session: state.session.copyWith(status: SessionStatus.active),
+          waitingForPartner: false,
         );
         _addSystemMessage('Session started. Your time is running.');
 

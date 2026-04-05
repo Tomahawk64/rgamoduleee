@@ -13,6 +13,7 @@ class BookingDraft {
     this.panditOption,
     this.isAutoAssign = true,
     this.notes,
+    this.contactPhone,
   });
 
   final PackageModel?    package;
@@ -22,6 +23,8 @@ class BookingDraft {
   final PanditOption?    panditOption;
   final bool             isAutoAssign;
   final String?          notes;
+  /// Contact phone number for this booking (separate from profile phone).
+  final String?          contactPhone;
 
   // ── Validation helpers ────────────────────────────────────────────────────
 
@@ -50,6 +53,7 @@ class BookingDraft {
     PanditOption?    panditOption,
     bool?            isAutoAssign,
     String?          notes,
+    String?          contactPhone,
   }) =>
       BookingDraft(
         package:      package      ?? this.package,
@@ -59,6 +63,7 @@ class BookingDraft {
         panditOption: panditOption ?? this.panditOption,
         isAutoAssign: isAutoAssign ?? this.isAutoAssign,
         notes:        notes        ?? this.notes,
+        contactPhone: contactPhone ?? this.contactPhone,
       );
 
   BookingDraft clearSlot() => BookingDraft(
@@ -69,6 +74,7 @@ class BookingDraft {
         panditOption: panditOption,
         isAutoAssign: isAutoAssign,
         notes:        notes,
+        contactPhone: contactPhone,
       );
 
   BookingDraft clearDateAndSlot() => BookingDraft(
@@ -79,5 +85,6 @@ class BookingDraft {
         panditOption: panditOption,
         isAutoAssign: isAutoAssign,
         notes:        notes,
+        contactPhone: contactPhone,
       );
 }

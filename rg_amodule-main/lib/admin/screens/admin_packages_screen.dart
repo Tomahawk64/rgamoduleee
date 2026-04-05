@@ -610,33 +610,6 @@ class _PackageFormSheetState extends State<_PackageFormSheet> {
               },
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<PackageMode>(
-              initialValue: _selectedMode,
-              decoration: InputDecoration(
-                labelText: 'Booking mode',
-                helperText: 'Choose whether this pooja is online, on-site, or both.',
-                helperMaxLines: 2,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 14,
-                ),
-              ),
-              items: PackageMode.values.map((mode) {
-                return DropdownMenuItem<PackageMode>(
-                  value: mode,
-                  child: Text(_modeLabel(mode)),
-                );
-              }).toList(),
-              onChanged: (mode) {
-                if (mode != null) {
-                  setState(() => _selectedMode = mode);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
             _AdminTextField(
               controller: _description,
               label: 'Description',

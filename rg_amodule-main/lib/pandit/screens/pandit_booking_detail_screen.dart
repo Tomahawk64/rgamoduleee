@@ -37,7 +37,6 @@ class PanditBookingDetailScreen extends ConsumerWidget {
     }
 
     final booking = assignment.booking;
-    final isNew = assignment.isPendingAction;
     final isActive = assignment.isActive;
 
     return Scaffold(
@@ -104,6 +103,15 @@ class PanditBookingDetailScreen extends ConsumerWidget {
                         ? 'Online / Virtual'
                         : booking.location.displayAddress,
                   ),
+                  if (booking.location.contactPhone != null &&
+                      booking.location.contactPhone!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _InfoRow(
+                      icon: Icons.phone_outlined,
+                      label: 'Contact',
+                      value: booking.location.contactPhone!,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -185,7 +193,6 @@ class PanditBookingDetailScreen extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // ── Actions ────────────────────────────────────────────────────
-            if (isNew) _NewRequestActions(booking: booking),
             if (isActive) _ActiveActions(booking: booking, assignment: assignment),
             if (assignment.isCompleted) _CompletedActions(booking: booking),
 
@@ -210,11 +217,8 @@ class _StatusBanner extends StatelessWidget {
 
     String title;
     String subtitle;
-    if (assignment.isPendingAction) {
-      title = 'New Request';
-      subtitle = 'Review and respond to this booking assignment';
-    } else if (assignment.isActive) {
-      title = 'Accepted · Upcoming';
+    if (assignment.isActive) {
+      title = 'Active · Upcoming';
       subtitle =
           'This booking is confirmed. Prepare for ${booking.formattedDate}';
     } else if (assignment.isCompleted) {
@@ -266,84 +270,6 @@ class _StatusBanner extends StatelessWidget {
 }
 
 // ── Action sections ───────────────────────────────────────────────────────────
-
-class _NewRequestActions extends ConsumerWidget {
-  const _NewRequestActions({required this.booking});
-  final BookingModel booking;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ctrl = ref.read(panditDashboardProvider.notifier);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const _SectionDivider(title: 'Respond to this request'),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () async {
-            await ctrl.acceptAssignment(booking.id);
-            if (context.mounted) context.pop();
-          },
-          icon: const Icon(Icons.check_circle_outline),
-          label: const Text('Accept Booking',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(50),
-            backgroundColor: AppColors.success,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => _confirmReject(context, ref),
-          icon: const Icon(Icons.cancel_outlined),
-          label: const Text('Reject Booking',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(50),
-            foregroundColor: AppColors.error,
-            side: const BorderSide(color: AppColors.error),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _confirmReject(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reject booking?'),
-        content: Text(
-          '"${booking.packageTitle}" will be returned to the pending pool '
-          'for reassignment.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => ctx.pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              ctx.pop();
-              await ref
-                  .read(panditDashboardProvider.notifier)
-                  .rejectAssignment(booking.id);
-              if (context.mounted) context.pop();
-            },
-            style:
-                FilledButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Yes, Reject'),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _ActiveActions extends ConsumerWidget {
   const _ActiveActions({

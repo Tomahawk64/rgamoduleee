@@ -251,10 +251,11 @@ class SupabaseBookingRepository implements IBookingRepository {
         'p_location':
             (draft.location ?? const BookingLocation(isOnline: true))
                 .toJson(),
-        'p_pandit_id': _toUuidOrNull(pandit?.id),
-        'p_amount':    pkg.effectivePrice,
-        'p_notes':     draft.notes,
-        'p_is_auto_assign': draft.isAutoAssign,
+        'p_pandit_id':        _toUuidOrNull(pandit?.id),
+        'p_amount':           pkg.effectivePrice,
+        'p_notes':            draft.notes ?? '',
+        'p_is_auto_assign':   draft.isAutoAssign,
+        'p_is_paid':          false,
       });
 
       final data = result as Map<String, dynamic>;

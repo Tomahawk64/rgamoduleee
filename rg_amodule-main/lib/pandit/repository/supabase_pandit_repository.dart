@@ -33,28 +33,6 @@ class SupabasePanditDashboardRepository
         .toList();
   }
 
-  // ── Accept assignment ────────────────────────────────────────────────────
-
-  @override
-  Future<void> acceptAssignment(String bookingId) async {
-    await _db
-        .from('bookings')
-        .update({'pandit_accepted': true})
-        .eq('id', bookingId);
-  }
-
-  // ── Reject assignment ────────────────────────────────────────────────────
-
-  @override
-  Future<void> rejectAssignment(String bookingId) async {
-    await _db.from('bookings').update({
-      'pandit_id': null,
-      'pandit_name': null,
-      'status': 'pending',
-      'pandit_accepted': false,
-    }).eq('id', bookingId);
-  }
-
   // ── Update status ────────────────────────────────────────────────────────
 
   @override
@@ -71,7 +49,7 @@ class SupabasePanditDashboardRepository
   Future<PanditProfile> fetchProfile(String panditId) async {
     // profiles holds name/rating; pandit_details holds specialties/bio/etc.
     final results = await Future.wait([
-      _db.from('profiles').select('id, full_name, rating').eq('id', panditId).maybeSingle(),
+      _db.from('profiles').select('id, full_name, rating, avatar_url').eq('id', panditId).maybeSingle(),
       _db.from('pandit_details').select().eq('id', panditId).maybeSingle(),
     ]);
 
@@ -110,6 +88,7 @@ class SupabasePanditDashboardRepository
       yearsExperience: (detailsRow?['experience_years'] as num?)?.toInt() ?? 0,
       languages: languages,
       bio: detailsRow?['bio'] as String?,
+      avatarUrl: profileRow?['avatar_url'] as String?,
     );
   }
 
@@ -120,12 +99,21 @@ class SupabasePanditDashboardRepository
     String panditId, {
     required bool enabled,
   }) async {
-    // Upsert into pandit_details (the correct table, linked to profiles)
-    await _db.from('pandit_details').upsert({
-      'id': panditId,
-      'consultation_enabled': enabled,
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'id');
+    // Use a SECURITY DEFINER RPC so the upsert always succeeds regardless
+    // of whether the pandit_details row already exists, and RLS is bypassed.
+    await _db.rpc('pandit_set_consultation_enabled', params: {
+      'p_enabled': enabled,
+    });
+  }
+
+  // ── Update avatar URL ────────────────────────────────────────────────────
+
+  @override
+  Future<void> updateAvatarUrl(String panditId, String url) async {
+    await _db
+        .from('profiles')
+        .update({'avatar_url': url})
+        .eq('id', panditId);
   }
 
   // ── Fetch earnings ───────────────────────────────────────────────────────

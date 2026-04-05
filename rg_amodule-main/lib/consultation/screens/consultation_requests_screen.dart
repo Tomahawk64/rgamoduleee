@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../auth/providers/auth_provider.dart';
+import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/role_enum.dart';
 import '../models/scheduled_consultation_request.dart';
@@ -186,6 +188,9 @@ class _RequestCard extends ConsumerWidget {
                 ),
               ],
             ),
+          // Start Chat for confirmed consultations (both pandit & user)
+          if (request.status == ConsultationRequestStatus.confirmed)
+            _StartChatButton(request: request, onActionDone: onActionDone),
         ],
       ),
     );
@@ -258,6 +263,106 @@ class _StatusChip extends StatelessWidget {
           color: color,
           fontWeight: FontWeight.w700,
           fontSize: 11,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Start Chat Button ─────────────────────────────────────────────────────────
+
+class _StartChatButton extends ConsumerStatefulWidget {
+  const _StartChatButton({
+    required this.request,
+    required this.onActionDone,
+  });
+
+  final ScheduledConsultationRequest request;
+  final VoidCallback onActionDone;
+
+  @override
+  ConsumerState<_StartChatButton> createState() => _StartChatButtonState();
+}
+
+class _StartChatButtonState extends ConsumerState<_StartChatButton> {
+  bool _loading = false;
+
+  Future<void> _startChat() async {
+    // Check if scheduled time has arrived (allow 5 min early)
+    final now = DateTime.now();
+    final earliest = widget.request.scheduledFor.subtract(const Duration(minutes: 5));
+    if (now.isBefore(earliest)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Scheduled time hasn\'t arrived yet. Chat opens at ${_fmtDt(widget.request.scheduledFor)}.',
+            ),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final repo = ref.read(sessionRepositoryProvider);
+      final user = ref.read(currentUserProvider);
+      final session = await repo.startScheduledSession(
+        request: widget.request,
+        currentUserId: user?.id ?? '',
+        currentUserName: user?.name ?? 'User',
+      );
+      if (mounted) {
+        context.push(Routes.consultationChat, extra: session);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not start chat: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  static String _fmtDt(DateTime dt) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final m = dt.minute.toString().padLeft(2, '0');
+    final p = dt.hour >= 12 ? 'PM' : 'AM';
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $h:$m $p';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: _loading ? null : _startChat,
+        icon: _loading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.chat_rounded, size: 18),
+        label: const Text('Start Chat'),
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );

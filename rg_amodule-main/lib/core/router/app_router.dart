@@ -25,6 +25,7 @@ import '../../shop/screens/product_detail_screen.dart';
 import '../../shop/screens/cart_screen.dart';
 import '../../shop/screens/checkout_screen.dart';
 import '../../admin/screens/admin_screen.dart';
+import '../../admin/screens/admin_shell_screen.dart';
 import '../../admin/screens/admin_packages_screen.dart';
 import '../../admin/screens/admin_poojas_screen.dart';
 import '../../admin/screens/admin_pandits_screen.dart';
@@ -35,7 +36,6 @@ import '../../admin/screens/admin_users_screen.dart';
 import '../../admin/screens/admin_products_screen.dart';
 import '../../pandit/screens/pandit_screen.dart';
 import '../../account/screens/edit_profile_screen.dart';
-import '../../account/screens/manage_addresses_screen.dart';
 import '../../account/screens/notifications_screen.dart';
 import '../../shop/screens/orders_screen.dart';
 import '../../pandit/screens/pandit_booking_detail_screen.dart';
@@ -75,7 +75,10 @@ abstract class Routes {
   static const cart = '/shop/cart';
   static const checkout = '/shop/checkout';
 
-  // Admin sub-routes (nested under /account/admin)
+  // Admin dedicated shell (root-level)
+  static const adminShell = '/admin';
+
+  // Admin sub-routes (nested under /account/admin, used as push targets)
   static const adminBase = '/account/admin';
   static const adminPoojas = '/account/admin/poojas';
   static const adminPackages = '/account/admin/packages';
@@ -127,16 +130,32 @@ class RouterNotifier extends ChangeNotifier {
       case AuthAuthenticated(user: final user):
         if (isOnSplash || isOnAuth) {
           if (user.role == UserRole.pandit) return Routes.panditDashboard;
+          if (user.role == UserRole.admin) return Routes.adminShell;
           return Routes.home;
         }
 
-        // Pandit should only see the pandit interface.
-        if (user.role == UserRole.pandit && !location.startsWith('/pandit')) {
+        // Pandit should only see the pandit interface (or edit their profile).
+        if (user.role == UserRole.pandit &&
+            !location.startsWith('/pandit') &&
+            location != Routes.editProfile) {
           return Routes.panditDashboard;
+        }
+
+        // Admin should be in the admin shell; redirect if on regular user pages.
+        if (user.role == UserRole.admin) {
+          final isAdminPath = location.startsWith('/admin') ||
+              location.startsWith('/account/admin') ||
+              location.startsWith('/booking') ||
+              location.startsWith('/consultation') ||
+              location.startsWith('/pandit');
+          if (!isAdminPath) return Routes.adminShell;
         }
 
         // Block non-admin from admin routes
         if (location.startsWith('/account/admin') && user.role != UserRole.admin) {
+          return Routes.account;
+        }
+        if (location.startsWith('/admin') && user.role != UserRole.admin) {
           return Routes.account;
         }
         // Block non-pandit from pandit routes (unless admin)
@@ -293,6 +312,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: ConsultantProfileScreen(panditId: state.pathParameters['id']!),
           transitionsBuilder: _slideRightTransition,
         ),
+      ),
+
+      // ── Admin shell (dedicated admin-only area) ──────────────────────────
+      GoRoute(
+        path: Routes.adminShell,
+        name: 'admin-shell',
+        builder: (_, _) => const AdminShellScreen(),
       ),
 
       // ── Pandit-only area (outside customer tab shell) ─────────────────────
@@ -551,11 +577,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                 GoRoute(
                   path: 'addresses',
                   name: 'manage-addresses',
-                  pageBuilder: (_, state) => CustomTransitionPage(
-                    key: state.pageKey,
-                    child: const ManageAddressesScreen(),
-                    transitionsBuilder: _slideRightTransition,
-                  ),
+                  // Addresses are now part of Edit Profile — redirect there.
+                  redirect: (_, __) => Routes.editProfile,
                 ),
                 GoRoute(
                   path: 'notifications',

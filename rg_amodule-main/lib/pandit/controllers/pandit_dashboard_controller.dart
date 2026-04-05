@@ -30,9 +30,6 @@ class PanditDashboardState {
 
   // ── Filtered views ─────────────────────────────────────────────────────────
 
-  List<PanditAssignment> get newRequests =>
-      assignments.where((a) => a.isPendingAction).toList();
-
   List<PanditAssignment> get activeAssignments =>
       assignments.where((a) => a.isActive).toList();
 
@@ -41,7 +38,6 @@ class PanditDashboardState {
 
   // ── Summary counts ─────────────────────────────────────────────────────────
 
-  int get pendingCount => newRequests.length;
   int get activeCount => activeAssignments.length;
   int get completedCount => completedAssignments.length;
   int get totalCount => assignments.length;
@@ -110,39 +106,6 @@ class PanditDashboardController
     }
   }
 
-  // ── Accept assignment ─────────────────────────────────────────────────────
-
-  Future<void> acceptAssignment(String bookingId) async {
-    try {
-      await _repo.acceptAssignment(bookingId);
-      final updated = state.assignments.map((a) {
-        if (a.booking.id != bookingId) return a;
-        return a.copyWith(panditAccepted: true);
-      }).toList();
-      state = state.copyWith(assignments: updated, clearError: true);
-      // Refresh earnings after status change
-      _refreshEarnings();
-    } catch (_) {
-      state = state.copyWith(error: 'Failed to accept booking.');
-    }
-  }
-
-  // ── Reject assignment ─────────────────────────────────────────────────────
-
-  Future<void> rejectAssignment(String bookingId) async {
-    try {
-      await _repo.rejectAssignment(bookingId);
-      // Remove from locally tracked assignments
-      final updated = assignments..removeWhere((a) => a.booking.id == bookingId);
-      state = state.copyWith(assignments: List.unmodifiable(updated), clearError: true);
-    } catch (_) {
-      state = state.copyWith(error: 'Failed to reject booking.');
-    }
-  }
-
-  List<PanditAssignment> get assignments =>
-      List<PanditAssignment>.from(state.assignments);
-
   // ── Update booking status ─────────────────────────────────────────────────
 
   Future<void> updateStatus(
@@ -169,8 +132,11 @@ class PanditDashboardController
     state = state.copyWith(togglingConsultation: true);
     try {
       await _repo.setConsultationEnabled(_panditId, enabled: next);
+      // Re-read from DB to confirm the write actually persisted
+      final profile = await _repo.fetchProfile(_panditId);
       state = state.copyWith(
-        consultationEnabled: next,
+        profile: profile,
+        consultationEnabled: profile.consultationEnabled,
         togglingConsultation: false,
         clearError: true,
       );
@@ -179,6 +145,22 @@ class PanditDashboardController
         togglingConsultation: false,
         error: 'Failed to update consultation status.',
       );
+    }
+  }
+
+  // ── Upload avatar ─────────────────────────────────────────────────────────
+
+  Future<void> uploadAvatar(String url) async {
+    try {
+      await _repo.updateAvatarUrl(_panditId, url);
+      if (state.profile != null) {
+        state = state.copyWith(
+          profile: state.profile!.copyWith(avatarUrl: url),
+          clearError: true,
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(error: 'Failed to update photo: ${e.toString()}');
     }
   }
 

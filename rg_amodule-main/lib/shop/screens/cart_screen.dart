@@ -77,19 +77,27 @@ class _CartItemTile extends ConsumerWidget {
       child: Row(
         children: [
           // Thumbnail
-          Container(
-            width: 70,
-            height: 70,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: Icon(
-                icon,
-                size: 34,
-                color: AppColors.primary.withValues(alpha: 0.5),
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 70,
+              height: 70,
+              child: product.imageUrl != null
+                  ? Image.network(
+                      product.imageUrl!,
+                      width: 70,
+                      height: 70,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => _iconPlaceholder(icon),
+                    )
+                  : product.imageAsset != null
+                      ? Image.asset(
+                          product.imageAsset!,
+                          width: 70,
+                          height: 70,
+                          fit: BoxFit.cover,
+                        )
+                      : _iconPlaceholder(icon),
             ),
           ),
           const SizedBox(width: 12),
@@ -131,7 +139,7 @@ class _CartItemTile extends ConsumerWidget {
                     if (item.quantity > 1) ...[
                       const SizedBox(width: 4),
                       Text(
-                        '(${product.formattedPrice} × ${item.quantity})',
+                        '(${product.formattedPriceFull} × ${item.quantity})',
                         style: const TextStyle(
                           fontSize: 11,
                           color: AppColors.textSecondary,
@@ -157,7 +165,16 @@ class _CartItemTile extends ConsumerWidget {
       ),
     );
   }
-}
+  Widget _iconPlaceholder(IconData icon) {
+    return Container(
+      width: 70,
+      height: 70,
+      color: AppColors.primary.withValues(alpha: 0.08),
+      child: Center(
+        child: Icon(icon, size: 34, color: AppColors.primary.withValues(alpha: 0.5)),
+      ),
+    );
+  }}
 
 // ── Quantity control ──────────────────────────────────────────────────────────
 

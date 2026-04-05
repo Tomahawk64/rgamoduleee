@@ -250,25 +250,41 @@ class _ProductCard extends ConsumerWidget {
                         top: Radius.circular(14),
                       ),
                     ),
-                    child: product.imageAsset != null
+                    child: product.imageUrl != null
                         ? ClipRRect(
                             borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(14),
                             ),
-                            child: Image.asset(
-                              product.imageAsset!,
+                            child: Image.network(
+                              product.imageUrl!,
                               width: double.infinity,
                               height: double.infinity,
                               fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Center(
+                                child: Icon(icon, size: 52,
+                                    color: AppColors.primary.withValues(alpha: 0.45)),
+                              ),
                             ),
                           )
-                        : Center(
-                            child: Icon(
-                              icon,
-                              size: 52,
-                              color: AppColors.primary.withValues(alpha: 0.45),
-                            ),
-                          ),
+                        : product.imageAsset != null
+                            ? ClipRRect(
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(14),
+                                ),
+                                child: Image.asset(
+                                  product.imageAsset!,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : Center(
+                                child: Icon(
+                                  icon,
+                                  size: 52,
+                                  color: AppColors.primary.withValues(alpha: 0.45),
+                                ),
+                              ),
                   ),
                   if (product.isBestSeller)
                     Positioned(
@@ -318,7 +334,7 @@ class _ProductCard extends ConsumerWidget {
                     Row(
                       children: [
                         Text(
-                          product.formattedPrice,
+                          product.formattedPriceFull,
                           style: const TextStyle(
                             color: AppColors.primary,
                             fontWeight: FontWeight.bold,

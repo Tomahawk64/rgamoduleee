@@ -120,16 +120,6 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   ),
                   const SizedBox(height: 20),
 
-                  // ── Mode ─────────────────────────────────────────────
-                  _SectionTitle(label: 'Mode'),
-                  const SizedBox(height: 8),
-                  _ModePicker(
-                    value: _draft.mode,
-                    onChange: (v) =>
-                        setState(() => _draft = _draft.copyWith(mode: v)),
-                  ),
-                  const SizedBox(height: 20),
-
                   // ── Price range ───────────────────────────────────────
                   _SectionTitle(label: 'Price Range'),
                   const SizedBox(height: 4),

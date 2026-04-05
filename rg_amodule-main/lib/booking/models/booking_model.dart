@@ -12,6 +12,7 @@ class BookingLocation {
     this.city,
     this.pincode,
     this.meetLink,
+    this.contactPhone,
   });
 
   final bool isOnline;
@@ -22,6 +23,8 @@ class BookingLocation {
   final String? pincode;
   // Online field (set by admin/pandit after confirmation)
   final String? meetLink;
+  /// Contact phone number for this booking (may differ from profile phone).
+  final String? contactPhone;
 
   String get displayAddress {
     if (isOnline) return meetLink != null ? 'Online: $meetLink' : 'Online';
@@ -41,6 +44,7 @@ class BookingLocation {
         'city':           city,
         'pincode':        pincode,
         'meet_link':      meetLink,
+        'contact_phone':  contactPhone,
       };
 
   factory BookingLocation.fromJson(Map<String, dynamic> j) => BookingLocation(
@@ -50,6 +54,7 @@ class BookingLocation {
         city:         j['city'] as String?,
         pincode:      j['pincode'] as String?,
         meetLink:     j['meet_link'] as String?,
+        contactPhone: j['contact_phone'] as String?,
       );
 }
 

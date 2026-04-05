@@ -88,6 +88,14 @@ abstract class ISessionRepository {
     String? note,
   });
 
+  /// Starts a confirmed scheduled consultation — transitions it to 'active'
+  /// and returns a [ConsultationSession] ready for [connect].
+  Future<ConsultationSession> startScheduledSession({
+    required ScheduledConsultationRequest request,
+    required String currentUserId,
+    required String currentUserName,
+  });
+
   /// Returns a broadcast stream of [SessionEvent]s for the given session.
   /// In production: establishes and returns a WebSocket channel stream.
   Stream<SessionEvent> connect(ConsultationSession session);
@@ -292,6 +300,34 @@ class MockSessionRepository implements ISessionRepository {
       panditNote: current.panditNote,
       isPaid: current.isPaid,
       paymentId: current.paymentId,
+    );
+  }
+
+  @override
+  Future<ConsultationSession> startScheduledSession({
+    required ScheduledConsultationRequest request,
+    required String currentUserId,
+    required String currentUserName,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final rate = ConsultationRate(
+      duration: request.durationMinutes,
+      totalPaise: request.amountPaise,
+    );
+    final pandit = PanditModel(
+      id: request.panditId,
+      name: request.panditName,
+      specialty: 'Consultation',
+      rating: 0,
+      totalSessions: 0,
+      isOnline: true,
+      rates: [rate],
+    );
+    return ConsultationSession.create(
+      pandit: pandit,
+      rate: rate,
+      userId: request.userId,
+      userName: request.userName,
     );
   }
 

@@ -1,18 +1,25 @@
 // lib/pandit/screens/pandit_screen.dart
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../auth/providers/auth_provider.dart';
+import '../../booking/models/booking_status.dart';
+import '../../consultation/models/scheduled_consultation_request.dart';
 import '../../consultation/providers/consultation_provider.dart';
+import '../../core/providers/supabase_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/supabase_storage_upload_helper.dart';
 import '../../widgets/base_scaffold.dart';
 import '../controllers/pandit_dashboard_controller.dart';
 import '../models/pandit_dashboard_models.dart';
 import '../providers/pandit_provider.dart';
-import '../../booking/models/booking_status.dart';
 
 class PanditScreen extends ConsumerStatefulWidget {
   const PanditScreen({super.key});
@@ -64,6 +71,11 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
       title: 'Pandit Dashboard',
       actions: [
         IconButton(
+          icon: const Icon(Icons.edit_outlined),
+          tooltip: 'Edit Profile',
+          onPressed: () => context.push(Routes.editProfile),
+        ),
+        IconButton(
           icon: const Icon(Icons.refresh_rounded),
           onPressed: state.loading
               ? null
@@ -84,9 +96,42 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
                         _ProfileHeader(
                           state: state,
                           user: user,
-                          onToggleConsultation: () => ref
-                              .read(panditDashboardProvider.notifier)
-                              .toggleConsultation(),
+                          onUploadPhoto: (bytes, ext) async {
+                            final client = ref.read(supabaseClientProvider);
+                            final uid = client.auth.currentUser?.id;
+                            if (uid == null) return;
+                            try {
+                              final contentType = ext == 'png'
+                                  ? 'image/png'
+                                  : 'image/jpeg';
+                              final fileName =
+                                  'avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
+                              final url = await SupabaseStorageUploadHelper
+                                  .uploadImageWithFallback(
+                                client: client,
+                                bytes: bytes,
+                                fileName: fileName,
+                                contentType: contentType,
+                                folder: 'avatar',
+                                primaryBucket: SupabaseStorageUploadHelper
+                                    .profileImagesBucket,
+                                fallbackBuckets: const [],
+                              );
+                              await ref
+                                  .read(panditDashboardProvider.notifier)
+                                  .uploadAvatar(url);
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Photo upload failed: ${e.toString()}'),
+                                    backgroundColor: AppColors.error,
+                                  ),
+                                );
+                              }
+                            }
+                          },
                         ),
                         const SizedBox(height: 16),
 
@@ -112,20 +157,15 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
                     pinned: true,
                     delegate: _TabHeaderDelegate(
                       tabController: _tab,
-                      newCount: state.pendingCount,
                       activeCount: state.activeCount,
                       completedCount: state.completedCount,
+                      consultationCount: 0, // updated live via provider
                     ),
                   ),
                 ],
                 body: TabBarView(
                   controller: _tab,
                   children: [
-                    _AssignmentList(
-                      assignments: state.newRequests,
-                      emptyLabel: 'No new requests',
-                      emptyIcon: Icons.notifications_none_rounded,
-                    ),
                     _AssignmentList(
                       assignments: state.activeAssignments,
                       emptyLabel: 'No active bookings',
@@ -135,6 +175,9 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
                       assignments: state.completedAssignments,
                       emptyLabel: 'No completed bookings yet',
                       emptyIcon: Icons.task_alt_outlined,
+                    ),
+                    _ConsultationRequestsTab(
+                      panditId: user?.id ?? '',
                     ),
                   ],
                 ),
@@ -146,23 +189,56 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
 
 // ── Profile Header ────────────────────────────────────────────────────────────
 
-class _ProfileHeader extends StatelessWidget {
+class _ProfileHeader extends StatefulWidget {
   const _ProfileHeader({
     required this.state,
     required this.user,
-    required this.onToggleConsultation,
+    required this.onUploadPhoto,
   });
 
   final PanditDashboardState state;
   final dynamic user;
-  final VoidCallback onToggleConsultation;
+  final Future<void> Function(Uint8List bytes, String ext) onUploadPhoto;
+
+  @override
+  State<_ProfileHeader> createState() => _ProfileHeaderState();
+}
+
+class _ProfileHeaderState extends State<_ProfileHeader> {
+  bool _uploading = false;
+  Uint8List? _pendingBytes; // shows optimistic preview before upload completes
+
+  Future<void> _pickAndUpload() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 800,
+    );
+    if (picked == null || !mounted) return;
+    final bytes = await picked.readAsBytes();
+    final dotIdx = picked.name.lastIndexOf('.');
+    final ext =
+        dotIdx != -1 ? picked.name.substring(dotIdx + 1).toLowerCase() : 'jpg';
+    setState(() {
+      _pendingBytes = bytes;
+      _uploading = true;
+    });
+    try {
+      await widget.onUploadPhoto(bytes, ext.isEmpty ? 'jpg' : ext);
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final profile = state.profile;
-    final name = profile?.name ?? user?.name ?? 'Pandit';
+    final name = profile?.name ?? widget.user?.name ?? 'Pandit';
     final initials =
         profile?.initials ?? (name.isNotEmpty ? name[0].toUpperCase() : 'P');
+    final avatarUrl = profile?.avatarUrl;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -186,17 +262,59 @@ class _ProfileHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              // Avatar
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: Colors.white.withValues(alpha: 0.2),
-                child: Text(
-                  initials,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+              // ── Tappable avatar ───────────────────────────────────────
+              GestureDetector(
+                onTap: _uploading ? null : _pickAndUpload,
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                      backgroundImage: _pendingBytes != null
+                          ? MemoryImage(_pendingBytes!) as ImageProvider
+                          : (avatarUrl != null && avatarUrl.isNotEmpty)
+                              ? NetworkImage(avatarUrl)
+                              : null,
+                      child: (_pendingBytes == null &&
+                              (avatarUrl == null || avatarUrl.isEmpty))
+                          ? Text(
+                              initials,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
+                    ),
+                    // Camera icon overlay
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: _uploading
+                              ? Colors.black45
+                              : Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: AppColors.secondary, width: 1.5),
+                        ),
+                        child: _uploading
+                            ? const Padding(
+                                padding: EdgeInsets.all(3),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.camera_alt,
+                                size: 11, color: AppColors.secondary),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 14),
@@ -294,58 +412,6 @@ class _ProfileHeader extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 14),
-          const Divider(color: Colors.white24, height: 1),
-          const SizedBox(height: 12),
-
-          // Consultation toggle
-          Row(
-            children: [
-              const Icon(Icons.videocam_outlined,
-                  color: Colors.white70, size: 18),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Online Consultations',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    Text(
-                      'Allow clients to book paid consultations',
-                      style: TextStyle(
-                        color: Colors.white60,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (state.togglingConsultation)
-                const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              else
-                Switch(
-                  value: state.consultationEnabled,
-                  onChanged: (_) => onToggleConsultation(),
-                  activeThumbColor: Colors.white,
-                  activeTrackColor: AppColors.success,
-                  inactiveThumbColor: Colors.white70,
-                  inactiveTrackColor: Colors.white24,
-                ),
-            ],
-          ),
         ],
       ),
     );
@@ -361,12 +427,6 @@ class _StatsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      _StatItem(
-        value: '${state.pendingCount}',
-        label: 'New Requests',
-        color: AppColors.warning,
-        icon: Icons.notification_important_outlined,
-      ),
       _StatItem(
         value: '${state.activeCount}',
         label: 'Active',
@@ -636,7 +696,7 @@ class _ActiveConsultationBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(
-      panditActiveSessionProvider({'panditId': panditId, 'panditName': panditName}),
+      panditActiveSessionProvider('${panditId}|${panditName}'),
     );
 
     return async.when(
@@ -716,15 +776,15 @@ class _ActiveConsultationBanner extends ConsumerWidget {
 class _TabHeaderDelegate extends SliverPersistentHeaderDelegate {
   _TabHeaderDelegate({
     required this.tabController,
-    required this.newCount,
     required this.activeCount,
     required this.completedCount,
+    required this.consultationCount,
   });
 
   final TabController tabController;
-  final int newCount;
   final int activeCount;
   final int completedCount;
+  final int consultationCount;
 
   @override
   double get minExtent => 48;
@@ -733,9 +793,9 @@ class _TabHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_TabHeaderDelegate old) =>
-      old.newCount != newCount ||
       old.activeCount != activeCount ||
-      old.completedCount != completedCount;
+      old.completedCount != completedCount ||
+      old.consultationCount != consultationCount;
 
   @override
   Widget build(
@@ -752,9 +812,9 @@ class _TabHeaderDelegate extends SliverPersistentHeaderDelegate {
           fontSize: 12,
         ),
         tabs: [
-          _CountTab(label: 'New Requests', count: newCount),
           _CountTab(label: 'Active', count: activeCount),
           const Tab(text: 'Completed'),
+          _CountTab(label: 'Consults', count: consultationCount),
         ],
       ),
     );
@@ -851,7 +911,6 @@ class _BookingCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final booking = assignment.booking;
-    final isNew = assignment.isPendingAction;
     final statusColor = booking.status.color;
 
     return GestureDetector(
@@ -863,9 +922,6 @@ class _BookingCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: isNew
-              ? Border.all(color: AppColors.warning, width: 1.5)
-              : null,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),
@@ -930,7 +986,7 @@ class _BookingCard extends ConsumerWidget {
                           size: 10, color: statusColor),
                       const SizedBox(width: 3),
                       Text(
-                        isNew ? 'New' : booking.status.label,
+                        booking.status.label,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
@@ -1023,83 +1079,467 @@ class _BookingCard extends ConsumerWidget {
               ],
             ),
 
-            // Quick actions for new requests
-            if (isNew) ...[
-              const SizedBox(height: 10),
-              const Divider(height: 1, color: AppColors.divider),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _confirmReject(context, ref),
-                      icon: const Icon(Icons.close, size: 14),
-                      label: const Text('Reject',
-                          style: TextStyle(fontSize: 12)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.error,
-                        side: const BorderSide(color: AppColors.error),
-                        minimumSize: const Size.fromHeight(34),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => ref
-                          .read(panditDashboardProvider.notifier)
-                          .acceptAssignment(booking.id),
-                      icon: const Icon(Icons.check, size: 14),
-                      label: const Text('Accept',
-                          style: TextStyle(fontSize: 12)),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(34),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),
     );
   }
+}
 
-  void _confirmReject(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reject booking?'),
-        content: Text(
-          'Are you sure you want to reject "${assignment.booking.packageTitle}"? '
-          'It will be returned to the pending pool.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => ctx.pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              ctx.pop();
-              ref
-                  .read(panditDashboardProvider.notifier)
-                  .rejectAssignment(assignment.booking.id);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.error,
+// ── Consultation Requests Tab ─────────────────────────────────────────────────
+
+class _ConsultationRequestsTab extends ConsumerWidget {
+  const _ConsultationRequestsTab({required this.panditId});
+  final String panditId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (panditId.isEmpty) {
+      return const Center(child: Text('Please login to view requests.'));
+    }
+
+    final async = ref.watch(panditScheduledConsultationsProvider(panditId));
+
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline,
+                size: 48, color: AppColors.error.withValues(alpha: 0.5)),
+            const SizedBox(height: 12),
+            const Text('Failed to load requests',
+                style: TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => ref.invalidate(
+                  panditScheduledConsultationsProvider(panditId)),
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Retry'),
             ),
-            child: const Text('Reject'),
+          ],
+        ),
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.chat_bubble_outline,
+                    size: 64,
+                    color: AppColors.primary.withValues(alpha: 0.3)),
+                const SizedBox(height: 12),
+                const Text(
+                  'No consultation requests yet',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'When users book a consultation, it will appear here.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textHint),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Sort: pending first, then by date
+        final sorted = List<ScheduledConsultationRequest>.from(list)
+          ..sort((a, b) {
+            const order = {
+              ConsultationRequestStatus.pending: 0,
+              ConsultationRequestStatus.rescheduleProposed: 1,
+              ConsultationRequestStatus.confirmed: 2,
+              ConsultationRequestStatus.active: 3,
+            };
+            final oa = order[a.status] ?? 10;
+            final ob = order[b.status] ?? 10;
+            if (oa != ob) return oa.compareTo(ob);
+            return b.createdAt.compareTo(a.createdAt);
+          });
+
+        return RefreshIndicator(
+          onRefresh: () async =>
+              ref.invalidate(panditScheduledConsultationsProvider(panditId)),
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            itemCount: sorted.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (_, i) => _ConsultationRequestCard(
+              request: sorted[i],
+              panditId: panditId,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Consultation Request Card ─────────────────────────────────────────────────
+
+class _ConsultationRequestCard extends ConsumerStatefulWidget {
+  const _ConsultationRequestCard({
+    required this.request,
+    required this.panditId,
+  });
+
+  final ScheduledConsultationRequest request;
+  final String panditId;
+
+  @override
+  ConsumerState<_ConsultationRequestCard> createState() =>
+      _ConsultationRequestCardState();
+}
+
+class _ConsultationRequestCardState
+    extends ConsumerState<_ConsultationRequestCard> {
+  bool _busy = false;
+
+  Future<void> _doAction(Future<void> Function() action) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      ref.invalidate(panditScheduledConsultationsProvider(widget.panditId));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Action failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _startChat(
+    BuildContext context,
+    WidgetRef ref,
+    ScheduledConsultationRequest request,
+  ) async {
+    // Check if scheduled time has arrived (allow 5 min early)
+    final now = DateTime.now();
+    final earliest = request.scheduledFor.subtract(const Duration(minutes: 5));
+    if (now.isBefore(earliest)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Scheduled time hasn\'t arrived yet. Chat opens at ${_fmt(request.scheduledFor)}.',
+            ),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(sessionRepositoryProvider);
+      final user = ref.read(currentUserProvider);
+      final session = await repo.startScheduledSession(
+        request: request,
+        currentUserId: user?.id ?? '',
+        currentUserName: user?.name ?? 'Pandit',
+      );
+      if (mounted) {
+        context.push(Routes.consultationChat, extra: session);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not start chat: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.request;
+    final repo = ref.read(sessionRepositoryProvider);
+    final statusColor = switch (r.status) {
+      ConsultationRequestStatus.pending => AppColors.warning,
+      ConsultationRequestStatus.confirmed => AppColors.success,
+      ConsultationRequestStatus.rescheduleProposed => AppColors.info,
+      ConsultationRequestStatus.active => AppColors.success,
+      ConsultationRequestStatus.ended => AppColors.textSecondary,
+      ConsultationRequestStatus.expired => AppColors.warning,
+      ConsultationRequestStatus.refunded => AppColors.info,
+      ConsultationRequestStatus.rejected => AppColors.error,
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: r.status == ConsultationRequestStatus.pending
+            ? Border.all(
+                color: AppColors.warning.withValues(alpha: 0.4), width: 1.5)
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: User name + status chip
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.person_outline,
+                    color: AppColors.primary, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      r.userName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      '${r.durationMinutes} min • ${r.amountLabel}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  r.status.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Schedule info
+          Row(
+            children: [
+              const Icon(Icons.calendar_today,
+                  size: 12, color: AppColors.textSecondary),
+              const SizedBox(width: 4),
+              Text(
+                _fmt(r.scheduledFor),
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+
+          if (r.proposedFor != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.schedule,
+                    size: 12, color: AppColors.warning),
+                const SizedBox(width: 4),
+                Text(
+                  'Proposed: ${_fmt(r.proposedFor!)}',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.warning),
+                ),
+              ],
+            ),
+          ],
+
+          if ((r.customerNote ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '\u{1F4AC} "${r.customerNote}"',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic),
+              ),
+            ),
+          ],
+
+          // Action buttons for pending requests
+          if (r.status == ConsultationRequestStatus.pending && !_busy) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _doAction(() =>
+                        repo.panditRespondToScheduledRequest(
+                          sessionId: r.id,
+                          action: 'accept',
+                        )),
+                    icon: const Icon(Icons.check, size: 16),
+                    label: const Text('Accept'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final dt = await _pickDateTime(context);
+                      if (dt == null) return;
+                      _doAction(() =>
+                          repo.panditRespondToScheduledRequest(
+                            sessionId: r.id,
+                            action: 'propose',
+                            proposedStart: dt,
+                          ));
+                    },
+                    icon: const Icon(Icons.schedule, size: 16),
+                    label: const Text('Propose'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.info,
+                      side: const BorderSide(color: AppColors.info),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 48,
+                  child: IconButton(
+                    onPressed: () => _doAction(() =>
+                        repo.panditRespondToScheduledRequest(
+                          sessionId: r.id,
+                          action: 'reject',
+                        )),
+                    icon: const Icon(Icons.close, size: 18),
+                    style: IconButton.styleFrom(
+                      backgroundColor:
+                          AppColors.error.withValues(alpha: 0.1),
+                      foregroundColor: AppColors.error,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    tooltip: 'Reject',
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // Start Chat button for confirmed requests
+          if (r.status == ConsultationRequestStatus.confirmed && !_busy) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _startChat(context, ref, r),
+                icon: const Icon(Icons.chat_rounded, size: 18),
+                label: const Text('Start Chat'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ],
+
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
+  }
+
+  static String _fmt(DateTime dt) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final m = dt.minute.toString().padLeft(2, '0');
+    final p = dt.hour >= 12 ? 'PM' : 'AM';
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $h:$m $p';
+  }
+
+  static Future<DateTime?> _pickDateTime(BuildContext context) async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 90)),
+      initialDate: now,
+    );
+    if (d == null || !context.mounted) return null;
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 2))),
+    );
+    if (t == null) return null;
+    return DateTime(d.year, d.month, d.day, t.hour, t.minute);
   }
 }

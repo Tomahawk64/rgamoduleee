@@ -24,6 +24,8 @@ abstract class IAdminRepository {
       String id, {required bool enabled});
   Future<AdminPandit> updateConsultationRates(
       String id, List<AdminRate> rates);
+  Future<AdminPandit> updatePanditStats(
+      String id, {required double rating, required int totalSessions});
 
   // Bookings
   Future<List<AdminBookingRow>> fetchBookings();

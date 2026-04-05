@@ -36,6 +36,7 @@ class WsSessionRepository implements ISessionRepository {
   final Map<String, RealtimeChannel> _channels = {};
   final Map<String, Timer> _localTimers = {};
   final Map<String, int> _remainingSeconds = {};
+  final Map<String, bool> _bothJoinedEmitted = {};
 
   // ── startSession ─────────────────────────────────────────────────────────
 
@@ -402,6 +403,69 @@ class WsSessionRepository implements ISessionRepository {
     );
   }
 
+  // ── startScheduledSession ────────────────────────────────────────────────
+
+  @override
+  Future<ConsultationSession> startScheduledSession({
+    required ScheduledConsultationRequest request,
+    required String currentUserId,
+    required String currentUserName,
+  }) async {
+    final result = await _client.rpc('start_scheduled_consultation', params: {
+      'p_session_id': request.id,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+
+    final startedAt = DateTime.tryParse(
+          data['started_at'] as String? ?? '') ??
+        DateTime.now();
+
+    // Fetch pandit model for the chat screen
+    final pandit = await SupabasePanditRepository(_client)
+        .fetchPandit(request.panditId);
+    if (pandit == null) {
+      throw StateError('Pandit profile not found');
+    }
+
+    final rate = ConsultationRate(
+      duration: request.durationMinutes,
+      totalPaise: request.amountPaise,
+    );
+
+    // Notify both parties
+    await _createNotification(
+      userId: request.userId,
+      type: AppNotificationType.consultationConfirmed,
+      title: 'Consultation started',
+      body: 'Your consultation with ${request.panditName} is now live!',
+      entityType: 'consultation',
+      entityId: request.id,
+    );
+    await _createNotification(
+      userId: request.panditId,
+      type: AppNotificationType.consultationConfirmed,
+      title: 'Consultation started',
+      body: 'Your consultation with ${request.userName} is now live!',
+      entityType: 'consultation',
+      entityId: request.id,
+    );
+
+    return ConsultationSession(
+      id: request.id,
+      pandit: pandit,
+      userId: request.userId,
+      userName: request.userName,
+      rate: rate,
+      totalSeconds: request.durationMinutes * 60,
+      status: SessionStatus.connecting,
+      startedAt: startedAt,
+    );
+  }
+
   // ── connect ─────────────────────────────────────────────────────────────
 
   @override
@@ -472,6 +536,15 @@ class WsSessionRepository implements ISessionRepository {
               _remainingSeconds[session.id] =
                   currentRemaining + newDuration * 60 - session.allottedSeconds;
             }
+            // Both parties joined — start timer
+            final pJoined = row['pandit_joined_at'];
+            final uJoined = row['user_joined_at'];
+            if (pJoined != null && uJoined != null &&
+                !(_bothJoinedEmitted[session.id] ?? false)) {
+              _bothJoinedEmitted[session.id] = true;
+              ctrl.add(SessionStartedEvent(sessionId: session.id));
+              _startLocalTimer(session.id, ctrl);
+            }
           },
         )
         .subscribe((RealtimeSubscribeStatus status, [Object? error]) {
@@ -496,11 +569,35 @@ class WsSessionRepository implements ISessionRepository {
 
     _channels[session.id] = channel;
 
-    // Emit session_started after Realtime subscription confirms
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (!ctrl.isClosed) {
-        ctrl.add(SessionStartedEvent(sessionId: session.id));
-        _startLocalTimer(session.id, ctrl);
+    // After Realtime subscription is set up, call join RPC and decide whether
+    // to start the timer immediately (both joined) or wait.
+    Future.delayed(const Duration(milliseconds: 600), () async {
+      if (ctrl.isClosed) return;
+      try {
+        final joinResult = await _client.rpc('join_consultation_chat', params: {
+          'p_session_id': session.id,
+        });
+        final data = joinResult as Map<String, dynamic>? ?? {};
+        final bothJoined = data['both_joined'] as bool? ?? false;
+        if (ctrl.isClosed) return;
+
+        if (bothJoined) {
+          _bothJoinedEmitted[session.id] = true;
+          ctrl.add(SessionStartedEvent(sessionId: session.id));
+          _startLocalTimer(session.id, ctrl);
+        } else {
+          // Only this party is in — wait for the Realtime UPDATE to detect
+          // the other party's join (handled in the consultations UPDATE callback).
+          ctrl.add(const WaitingForPartnerEvent());
+        }
+      } catch (_) {
+        // If join RPC fails (e.g., instant session without the columns),
+        // fall back to starting immediately.
+        if (!ctrl.isClosed) {
+          _bothJoinedEmitted[session.id] = true;
+          ctrl.add(SessionStartedEvent(sessionId: session.id));
+          _startLocalTimer(session.id, ctrl);
+        }
       }
     });
 
@@ -668,6 +765,7 @@ class WsSessionRepository implements ISessionRepository {
     _controllers.remove(sessionId);
 
     _remainingSeconds.remove(sessionId);
+    _bothJoinedEmitted.remove(sessionId);
   }
 
   // ── private helpers ───────────────────────────────────────────────────────
@@ -828,7 +926,6 @@ class SupabasePanditRepository implements IPanditRepository {
       final rows = await _client
           .from('pandit_details')
           .select(_kSelect)
-          .eq('is_online', true)
           .eq('consultation_enabled', true)
           .order('experience_years', ascending: false);
 

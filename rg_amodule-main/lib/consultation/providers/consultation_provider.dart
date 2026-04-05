@@ -104,11 +104,14 @@ final panditScheduledConsultationsProvider =
 // Used by the pandit dashboard to show a "Rejoin Chat" button.
 
 final panditActiveSessionProvider =
-    FutureProvider.autoDispose.family<ConsultationSession?, Map<String, String>>(
-  (ref, params) async {
+    FutureProvider.autoDispose.family<ConsultationSession?, String>(
+  (ref, key) async {
+    final parts = key.split('|');
+    final panditId = parts[0];
+    final panditName = parts.length > 1 ? parts[1] : 'Pandit';
     return ref.watch(sessionRepositoryProvider).fetchActiveSessionForPandit(
-          panditId: params['panditId']!,
-          panditName: params['panditName'] ?? 'Pandit',
+          panditId: panditId,
+          panditName: panditName,
         );
   },
 );

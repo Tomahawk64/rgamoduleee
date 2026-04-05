@@ -1,15 +1,18 @@
 // lib/shop/screens/checkout_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../auth/providers/auth_provider.dart';
+import '../../core/providers/supabase_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../payment/payment_provider.dart';
 import '../../payment/payment_service.dart';
 import '../../widgets/base_scaffold.dart';
+import '../../widgets/country_phone_field.dart';
 import '../controllers/shop_controller.dart';
 import '../models/cart_item.dart';
 import '../providers/shop_provider.dart';
@@ -28,6 +31,56 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _addressCtrl = TextEditingController();
   final _pincodeCtrl = TextEditingController();
   String _selectedPayment = 'upi';
+  CountryDialCode _selectedCountry = kCountryList.first; // default: India +91
+  bool _addressLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prefillFromProfile());
+  }
+
+  Future<void> _prefillFromProfile() async {
+    final currentUser = ref.read(currentUserProvider);
+    if (currentUser == null) return;
+
+    if (_nameCtrl.text.isEmpty) _nameCtrl.text = currentUser.name;
+    if (_phoneCtrl.text.isEmpty && (currentUser.phone ?? '').isNotEmpty) {
+      final raw = currentUser.phone!.replaceAll(RegExp(r'^\+\d{1,3}'), '').trim();
+      _phoneCtrl.text = raw;
+    }
+
+    setState(() => _addressLoading = true);
+    try {
+      final client = ref.read(supabaseClientProvider);
+      final rows = await client
+          .from('addresses')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('is_default', true)
+          .limit(1);
+      if (!mounted) return;
+      final list = List<Map<String, dynamic>>.from(rows as List);
+      if (list.isNotEmpty) {
+        final a = list.first;
+        if (_addressCtrl.text.isEmpty) {
+          final parts = [
+            a['address_line'] as String? ?? '',
+            a['city'] as String? ?? '',
+            a['state'] as String? ?? '',
+          ].where((s) => s.isNotEmpty).join(', ');
+          _addressCtrl.text = parts;
+        }
+        if (_pincodeCtrl.text.isEmpty) {
+          _pincodeCtrl.text = a['pincode'] as String? ?? '';
+        }
+      }
+    } catch (_) {
+      // silently ignore – user can fill manually
+    } finally {
+      if (mounted) setState(() => _addressLoading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -50,7 +103,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         description: 'Saral Pooja Shop Order',
         customerName: _nameCtrl.text.trim(),
         customerEmail: currentUser?.email ?? '',
-        customerPhone: _phoneCtrl.text.trim(),
+        customerPhone: '${_selectedCountry.dialCode}${_phoneCtrl.text.trim()}',
       );
       final result = await ref.read(paymentProvider.notifier).pay(request);
       if (!result.isSuccess) return; // User cancelled or error — stop here.
@@ -63,6 +116,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               '${_addressCtrl.text.trim()}, ${_pincodeCtrl.text.trim()}',
           paymentMethod: _selectedPayment,
         );
+  }
+
+  void _openCountryPicker() {
+    showCountryPicker(
+      context: context,
+      selected: _selectedCountry,
+      onSelected: (c) => setState(() => _selectedCountry = c),
+    );
   }
 
   @override
@@ -116,6 +177,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     const SizedBox(height: 20),
 
                     // ── Delivery address ─────────────────────────────────
+                    if (_addressLoading)
+                      const LinearProgressIndicator(minHeight: 2),
                     _CheckoutSection(
                       title: 'Delivery Address',
                       child: Column(
@@ -129,20 +192,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                 : null,
                           ),
                           const SizedBox(height: 12),
-                          _FormField(
+                          CountryPhoneFormField(
                             controller: _phoneCtrl,
-                            label: 'Phone Number',
-                            icon: Icons.phone_outlined,
-                            keyboardType: TextInputType.phone,
-                            validator: (v) {
-                              if (v?.trim().isEmpty ?? true) {
-                                return 'Phone is required';
-                              }
-                              if ((v?.trim().length ?? 0) < 10) {
-                                return 'Enter a valid phone number';
-                              }
-                              return null;
-                            },
+                            country: _selectedCountry,
+                            onCountryTap: _openCountryPicker,
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: AppColors.border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: AppColors.border),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 12),
+                              filled: true,
+                              fillColor: AppColors.background,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           _FormField(
@@ -164,8 +231,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                               if (v?.trim().isEmpty ?? true) {
                                 return 'PIN code is required';
                               }
-                              if ((v?.trim().length ?? 0) != 6) {
-                                return 'Enter a valid 6-digit PIN code';
+                              if ((v?.trim().length ?? 0) !=
+                                  _selectedCountry.postalCodeLength) {
+                                return 'Enter a valid '
+                                    '${_selectedCountry.postalCodeLength}-digit '
+                                    'postal code for ${_selectedCountry.name}';
                               }
                               return null;
                             },

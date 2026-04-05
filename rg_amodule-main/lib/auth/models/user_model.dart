@@ -8,6 +8,7 @@ class UserModel extends Equatable {
     required this.name,
     required this.email,
     required this.role,
+    this.isActive = true,
     this.avatarUrl,
     this.phone,
     this.createdAt,
@@ -17,6 +18,8 @@ class UserModel extends Equatable {
   final String name;
   final String email;
   final UserRole role;
+  /// Whether the admin has enabled this account (false = blocked).
+  final bool isActive;
   final String? avatarUrl;
   final String? phone;
   final DateTime? createdAt;
@@ -38,6 +41,7 @@ class UserModel extends Equatable {
           (r) => r.name == (json['role'] as String?),
           orElse: () => UserRole.user,
         ),
+        isActive: json['is_active'] as bool? ?? true,
         avatarUrl: json['avatar_url'] as String?,
         phone: json['phone'] as String?,
         createdAt: json['created_at'] != null
@@ -59,6 +63,7 @@ class UserModel extends Equatable {
           (r) => r.name == (json['role'] as String?),
           orElse: () => UserRole.user,
         ),
+        isActive: json['is_active'] as bool? ?? true,
         avatarUrl: json['avatar_url'] as String?,
         phone: json['phone'] as String?,
         createdAt: json['created_at'] != null
@@ -71,6 +76,7 @@ class UserModel extends Equatable {
         'name': name,
         'email': email,
         'role': role.name,
+        'is_active': isActive,
         'avatar_url': avatarUrl,
         'phone': phone,
         'created_at': createdAt?.toIso8601String(),
@@ -81,6 +87,7 @@ class UserModel extends Equatable {
     String? name,
     String? email,
     UserRole? role,
+    bool? isActive,
     String? avatarUrl,
     String? phone,
     DateTime? createdAt,
@@ -90,11 +97,12 @@ class UserModel extends Equatable {
         name: name ?? this.name,
         email: email ?? this.email,
         role: role ?? this.role,
+        isActive: isActive ?? this.isActive,
         avatarUrl: avatarUrl ?? this.avatarUrl,
         phone: phone ?? this.phone,
         createdAt: createdAt ?? this.createdAt,
       );
 
   @override
-  List<Object?> get props => [id, name, email, role, avatarUrl, phone];
+  List<Object?> get props => [id, name, email, role, isActive, avatarUrl, phone];
 }

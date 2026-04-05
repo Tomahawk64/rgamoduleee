@@ -133,7 +133,8 @@ class SupabaseAdminRepository implements IAdminRepository {
     specialties,
     languages,
     experience_years,
-    consultation_enabled
+    consultation_enabled,
+    sessions_count
   ''';
 
   @override
@@ -203,6 +204,7 @@ class SupabaseAdminRepository implements IAdminRepository {
       return panditsRows
           .map((r) {
             final id = r['id'] as String;
+            final storedSessions = (r['sessions_count'] as num?)?.toInt();
             return _panditFromRow(
                 {
                   ...r,
@@ -211,7 +213,7 @@ class SupabaseAdminRepository implements IAdminRepository {
                       ratesByPandit[id] ?? const <Map<String, dynamic>>[],
                 },
                 totalBookings: bookingCounts[r['id'] as String] ?? 0,
-                totalSessions: sessionCounts[r['id'] as String] ?? 0,
+                totalSessions: storedSessions ?? (sessionCounts[r['id'] as String] ?? 0),
               );
           })
           .toList();
@@ -243,10 +245,13 @@ class SupabaseAdminRepository implements IAdminRepository {
   @override
   Future<AdminPandit> togglePandit(String id, {required bool isActive}) async {
     try {
-      await _client
-          .from('profiles')
-          .update({'is_active': isActive})
-          .eq('id', id);
+      final result = await _client.rpc('admin_set_pandit_active', params: {
+        'p_pandit_id': id,
+        'p_is_active': isActive,
+      }) as Map<String, dynamic>;
+      if (result['error'] != null) {
+        throw Exception(result['error'] as String);
+      }
       final all = await fetchPandits();
       return all.firstWhere((p) => p.id == id);
     } on PostgrestException catch (e) {
@@ -258,14 +263,37 @@ class SupabaseAdminRepository implements IAdminRepository {
   Future<AdminPandit> toggleConsultation(
       String id, {required bool enabled}) async {
     try {
-      await _client
-          .from('pandit_details')
-          .update({'consultation_enabled': enabled})
-          .eq('id', id);
+      final result = await _client.rpc('admin_set_consultation', params: {
+        'p_pandit_id': id,
+        'p_enabled':   enabled,
+      }) as Map<String, dynamic>;
+      if (result['error'] != null) {
+        throw Exception(result['error'] as String);
+      }
       final all = await fetchPandits();
       return all.firstWhere((p) => p.id == id);
     } on PostgrestException catch (e) {
       throw Exception('toggleConsultation failed: ${e.message}');
+    }
+  }
+
+  @override
+  Future<AdminPandit> updatePanditStats(
+      String id, {required double rating, required int totalSessions}) async {
+    try {
+      await _client.from('profiles').update({
+        'rating': rating,
+      }).eq('id', id);
+
+      await _client.from('pandit_details').upsert({
+        'id': id,
+        'sessions_count': totalSessions,
+      }, onConflict: 'id');
+
+      final all = await fetchPandits();
+      return all.firstWhere((p) => p.id == id);
+    } on PostgrestException catch (e) {
+      throw Exception('updatePanditStats failed: ${e.message}');
     }
   }
 
@@ -314,7 +342,10 @@ class SupabaseAdminRepository implements IAdminRepository {
     is_paid,
     location,
     user_id,
-    pandit_id
+    pandit_id,
+    notes,
+    slot_id,
+    slot
   ''';
 
   @override
@@ -335,26 +366,27 @@ class SupabaseAdminRepository implements IAdminRepository {
         if (pid != null) profileIds.add(pid);
       }
 
-      final namesById = <String, String>{};
+      final profilesById = <String, Map<String, dynamic>>{};
       if (profileIds.isNotEmpty) {
         final profileRows = await _client
             .from('profiles')
-            .select('id, full_name')
+            .select('id, full_name, phone, email')
             .inFilter('id', profileIds.toList());
         for (final r in (profileRows as List)) {
           final row = r as Map<String, dynamic>;
-          namesById[row['id'] as String] = row['full_name'] as String? ?? '';
+          profilesById[row['id'] as String] = row;
         }
       }
 
       return bookingRows.map((row) {
         final uid = row['user_id'] as String?;
         final pid = row['pandit_id'] as String?;
+        final userProfile  = uid != null ? (profilesById[uid] ?? {}) : <String, dynamic>{};
+        final panditProfile = pid != null ? (profilesById[pid] ?? {}) : null;
         return _bookingFromRow({
           ...row,
-          'user': {'full_name': uid != null ? (namesById[uid] ?? '') : ''},
-          'pandit':
-              pid != null ? {'full_name': namesById[pid] ?? ''} : null,
+          'user': userProfile,
+          'pandit': panditProfile,
         });
       }).toList();
     } on PostgrestException catch (e) {
@@ -383,29 +415,7 @@ class SupabaseAdminRepository implements IAdminRepository {
       if (list.isEmpty) throw Exception('updateBookingStatus: no row returned');
       final row = list.first as Map<String, dynamic>;
 
-      final profileIds = <String>{
-        if (row['user_id'] != null) row['user_id'] as String,
-        if (row['pandit_id'] != null) row['pandit_id'] as String,
-      };
-      final namesById = <String, String>{};
-      if (profileIds.isNotEmpty) {
-        final profileRows = await _client
-            .from('profiles')
-            .select('id, full_name')
-            .inFilter('id', profileIds.toList());
-        for (final r in (profileRows as List)) {
-          final p = r as Map<String, dynamic>;
-          namesById[p['id'] as String] = p['full_name'] as String? ?? '';
-        }
-      }
-
-      final uid = row['user_id'] as String?;
-      final pid = row['pandit_id'] as String?;
-      final booking = _bookingFromRow({
-        ...row,
-        'user': {'full_name': uid != null ? (namesById[uid] ?? '') : ''},
-        'pandit': pid != null ? {'full_name': namesById[pid] ?? ''} : null,
-      });
+      final booking = _bookingFromRow(await _enrichBookingRow(row));
       await _notifyBookingStatusChanged(booking, status);
       return booking;
     } on PostgrestException catch (e) {
@@ -435,29 +445,7 @@ class SupabaseAdminRepository implements IAdminRepository {
       if (list.isEmpty) throw Exception('assignPandit: no row returned');
       final row = list.first as Map<String, dynamic>;
 
-      final profileIds = <String>{
-        if (row['user_id'] != null) row['user_id'] as String,
-        if (row['pandit_id'] != null) row['pandit_id'] as String,
-      };
-      final namesById = <String, String>{};
-      if (profileIds.isNotEmpty) {
-        final profileRows = await _client
-            .from('profiles')
-            .select('id, full_name')
-            .inFilter('id', profileIds.toList());
-        for (final r in (profileRows as List)) {
-          final p = r as Map<String, dynamic>;
-          namesById[p['id'] as String] = p['full_name'] as String? ?? '';
-        }
-      }
-
-      final uid = row['user_id'] as String?;
-      final pid = row['pandit_id'] as String?;
-      final booking = _bookingFromRow({
-        ...row,
-        'user': {'full_name': uid != null ? (namesById[uid] ?? '') : ''},
-        'pandit': pid != null ? {'full_name': namesById[pid] ?? ''} : null,
-      });
+      final booking = _bookingFromRow(await _enrichBookingRow(row));
       await _notifyPanditAssignment(booking);
       return booking;
     } on PostgrestException catch (e) {
@@ -478,29 +466,8 @@ class SupabaseAdminRepository implements IAdminRepository {
       if (list.isEmpty) throw Exception('markAsPaid: no row returned');
       final row = list.first as Map<String, dynamic>;
 
-      final profileIds = <String>{
-        if (row['user_id'] != null) row['user_id'] as String,
-        if (row['pandit_id'] != null) row['pandit_id'] as String,
-      };
-      final namesById = <String, String>{};
-      if (profileIds.isNotEmpty) {
-        final profileRows = await _client
-            .from('profiles')
-            .select('id, full_name')
-            .inFilter('id', profileIds.toList());
-        for (final r in (profileRows as List)) {
-          final p = r as Map<String, dynamic>;
-          namesById[p['id'] as String] = p['full_name'] as String? ?? '';
-        }
-      }
-
       final uid = row['user_id'] as String?;
-      final pid = row['pandit_id'] as String?;
-      final booking = _bookingFromRow({
-        ...row,
-        'user': {'full_name': uid != null ? (namesById[uid] ?? '') : ''},
-        'pandit': pid != null ? {'full_name': namesById[pid] ?? ''} : null,
-      });
+      final booking = _bookingFromRow(await _enrichBookingRow(row));
       if (uid != null) {
         await _createNotification(
           userId: uid,
@@ -515,6 +482,33 @@ class SupabaseAdminRepository implements IAdminRepository {
     } on PostgrestException catch (e) {
       throw Exception('markAsPaid failed: ${e.message}');
     }
+  }
+
+  /// Enriches a raw booking row with profile data (full_name, phone, email).
+  Future<Map<String, dynamic>> _enrichBookingRow(
+      Map<String, dynamic> row) async {
+    final uid = row['user_id'] as String?;
+    final pid = row['pandit_id'] as String?;
+    final profileIds = <String>{
+      if (uid != null) uid,
+      if (pid != null) pid,
+    };
+    final profilesById = <String, Map<String, dynamic>>{};
+    if (profileIds.isNotEmpty) {
+      final profileRows = await _client
+          .from('profiles')
+          .select('id, full_name, phone, email')
+          .inFilter('id', profileIds.toList());
+      for (final r in (profileRows as List)) {
+        final p = r as Map<String, dynamic>;
+        profilesById[p['id'] as String] = p;
+      }
+    }
+    return {
+      ...row,
+      'user':   uid != null ? (profilesById[uid] ?? {}) : <String, dynamic>{},
+      'pandit': pid != null ? profilesById[pid]         : null,
+    };
   }
 
   Future<void> _notifyPanditAssignment(AdminBookingRow booking) async {
@@ -757,10 +751,13 @@ class SupabaseAdminRepository implements IAdminRepository {
   Future<AdminUser> toggleUser(String userId,
       {required bool isActive}) async {
     try {
-      await _client
-          .from('profiles')
-          .update({'is_active': isActive})
-          .eq('id', userId);
+      final result = await _client.rpc('admin_set_user_active', params: {
+        'p_user_id':   userId,
+        'p_is_active': isActive,
+      }) as Map<String, dynamic>;
+      if (result['error'] != null) {
+        throw Exception(result['error'] as String);
+      }
       final rows = await _client
           .rpc('get_users_for_admin') as List;
       final row = rows
@@ -1018,6 +1015,35 @@ class SupabaseAdminRepository implements IAdminRepository {
     final locationJ  = row['location'] as Map<String, dynamic>?;
     final isOnline   = locationJ?['is_online'] as bool? ?? false;
 
+    // Build a human-readable address from the location JSONB.
+    String? address;
+    if (isOnline) {
+      address = 'Online';
+    } else if (locationJ != null) {
+      final parts = [
+        locationJ['address_line1'] as String? ?? locationJ['address'] as String? ?? '',
+        locationJ['city']          as String? ?? '',
+        locationJ['state']         as String? ?? '',
+        locationJ['pincode']       as String? ?? '',
+      ].where((s) => s.isNotEmpty).toList();
+      if (parts.isNotEmpty) address = parts.join(', ');
+    }
+
+    // Slot time from slot JSONB or slot_id string.
+    final slotJ   = row['slot']    as Map<String, dynamic>?;
+    final slotId  = row['slot_id'] as String?;
+    String? timeSlot;
+    if (slotJ != null) {
+      final start = slotJ['start_time'] as String? ?? slotJ['start'] as String?;
+      final end   = slotJ['end_time']   as String? ?? slotJ['end']   as String?;
+      if (start != null && end != null) {
+        timeSlot = '$start – $end';
+      } else if (start != null) {
+        timeSlot = start;
+      }
+    }
+    timeSlot ??= slotId;
+
     return AdminBookingRow(
       id:           row['id']            as String,
       packageTitle: row['package_title'] as String? ?? '',
@@ -1033,6 +1059,12 @@ class SupabaseAdminRepository implements IAdminRepository {
       specialPoojaId: row['special_pooja_id'] as String?,
       userId:    row['user_id']   as String?,
       panditId:  row['pandit_id'] as String?,
+      clientPhone: user['phone']  as String?,
+      clientEmail: user['email']  as String?,
+      address:    address,
+      timeSlot:   timeSlot,
+      userNotes:  row['notes']   as String?,
+      contactPhone: locationJ?['contact_phone'] as String?,
     );
   }
 

@@ -220,6 +220,11 @@ class SessionStartedEvent extends SessionEvent {
   final String sessionId;
 }
 
+/// Waiting for the other participant to join before the timer starts.
+class WaitingForPartnerEvent extends SessionEvent {
+  const WaitingForPartnerEvent();
+}
+
 /// Server confirmed time extension.
 class SessionExtendedEvent extends SessionEvent {
   const SessionExtendedEvent({required this.addedSeconds});

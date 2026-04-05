@@ -111,6 +111,8 @@ class _AdminPanditsScreenState
                     .toggleConsultation(pandits[i].id, enabled: v),
                 onEditPricing: () =>
                     _showPricingSheet(context, ref, pandits[i]),
+                onEditStats: () =>
+                    _showStatsSheet(context, ref, pandits[i]),
               ),
             ),
           ),
@@ -136,6 +138,24 @@ class _AdminPanditsScreenState
       ),
     );
   }
+
+  void _showStatsSheet(
+      BuildContext context, WidgetRef ref, AdminPandit pandit) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _StatsSheet(
+        pandit: pandit,
+        onSave: (rating, sessions) => ref
+            .read(adminProvider.notifier)
+            .updatePanditStats(pandit.id, rating: rating, totalSessions: sessions),
+      ),
+    );
+  }
 }
 
 // ── Pandit card ───────────────────────────────────────────────────────────────
@@ -146,12 +166,14 @@ class _PanditCard extends StatelessWidget {
     required this.onToggleActive,
     required this.onToggleConsultation,
     required this.onEditPricing,
+    required this.onEditStats,
   });
 
   final AdminPandit pandit;
   final ValueChanged<bool> onToggleActive;
   final ValueChanged<bool> onToggleConsultation;
   final VoidCallback onEditPricing;
+  final VoidCallback onEditStats;
 
   @override
   Widget build(BuildContext context) {
@@ -254,6 +276,32 @@ class _PanditCard extends StatelessWidget {
                 icon: Icons.videocam,
                 label: '${pandit.totalSessions} sessions',
                 color: AppColors.info,
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: onEditStats,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.edit, size: 12, color: AppColors.secondary),
+                      SizedBox(width: 4),
+                      Text(
+                        'Edit Stats',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.secondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -494,6 +542,127 @@ class _RateTile extends StatelessWidget {
             onPressed: onRemove,
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Stats edit sheet ──────────────────────────────────────────────────────────
+
+class _StatsSheet extends StatefulWidget {
+  const _StatsSheet({required this.pandit, required this.onSave});
+  final AdminPandit pandit;
+  final void Function(double rating, int sessions) onSave;
+
+  @override
+  State<_StatsSheet> createState() => _StatsSheetState();
+}
+
+class _StatsSheetState extends State<_StatsSheet> {
+  late final TextEditingController _ratingCtrl;
+  late final TextEditingController _sessionsCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ratingCtrl = TextEditingController(
+        text: widget.pandit.rating.toStringAsFixed(1));
+    _sessionsCtrl = TextEditingController(
+        text: '${widget.pandit.totalSessions}');
+  }
+
+  @override
+  void dispose() {
+    _ratingCtrl.dispose();
+    _sessionsCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Edit Stats\n${widget.pandit.name}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Update rating and session count for this pandit.',
+              style: TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _ratingCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Rating (0.0 – 5.0)',
+                prefixIcon: const Icon(Icons.star_outline,
+                    color: Colors.amber, size: 20),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _sessionsCtrl,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Total Sessions',
+                prefixIcon: const Icon(Icons.videocam_outlined,
+                    color: AppColors.info, size: 20),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () {
+                  final rating = double.tryParse(_ratingCtrl.text) ??
+                      widget.pandit.rating;
+                  final sessions = int.tryParse(_sessionsCtrl.text) ??
+                      widget.pandit.totalSessions;
+                  final clampedRating = rating.clamp(0.0, 5.0);
+                  widget.onSave(clampedRating, sessions);
+                  Navigator.pop(context);
+                },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Save Stats'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

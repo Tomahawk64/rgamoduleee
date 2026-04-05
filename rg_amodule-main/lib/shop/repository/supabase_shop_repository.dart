@@ -29,6 +29,7 @@ class SupabaseShopRepository implements IProductRepository {
       stock: row['stock'] as int? ?? 0,
       includes: List<String>.from(row['includes'] as List? ?? []),
       isBestSeller: row['is_best_seller'] as bool? ?? false,
+      imageUrl: row['image_url'] as String?,
     );
   }
 

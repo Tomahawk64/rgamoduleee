@@ -51,6 +51,7 @@ class ProductModel {
     required this.includes,
     this.isBestSeller = false,
     this.imageAsset,
+    this.imageUrl,
   });
 
   final String id;
@@ -70,6 +71,9 @@ class ProductModel {
 
   /// Optional local asset path, e.g. 'assets/images/image9.jpg'.
   final String? imageAsset;
+
+  /// Optional remote image URL from Supabase storage.
+  final String? imageUrl;
 
   // ── Computed ──────────────────────────────────────────────────────────────
 

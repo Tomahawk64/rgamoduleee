@@ -399,6 +399,24 @@ class _BookingRowState extends State<_BookingRow> {
             ),
           ],
 
+          // ── Contact phone ─────────────────────────────────────────────────
+          if (booking.contactPhone != null &&
+              booking.contactPhone!.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                const Icon(Icons.phone_outlined,
+                    size: 12, color: AppColors.textSecondary),
+                const SizedBox(width: 3),
+                Text(
+                  booking.contactPhone!,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ],
+
           // ── Pandit ────────────────────────────────────────────────────────
           const SizedBox(height: 4),
           Row(

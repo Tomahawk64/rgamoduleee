@@ -187,6 +187,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   if (sessionState.isConnecting)
                     _ConnectingOverlay(
                         panditName: widget.session.pandit.name),
+                  // Waiting for other party overlay
+                  if (sessionState.waitingForPartner)
+                    const _WaitingForPartnerOverlay(),
                   // Expired overlay
                   if (isExpired && sessionState.isEnded)
                     _ExpiredOverlay(
@@ -940,6 +943,38 @@ class _ConnectingOverlay extends StatelessWidget {
             const Text('Setting up your secure session',
                 style: TextStyle(
                     color: AppColors.textSecondary, fontSize: 13.5)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Waiting for Partner Overlay ───────────────────────────────────────────────
+
+class _WaitingForPartnerOverlay extends StatelessWidget {
+  const _WaitingForPartnerOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.surface.withAlpha(230),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            const Text('Waiting for the other participant…',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 16)),
+            const SizedBox(height: 8),
+            Text(
+              'The timer will start once both parties have joined.',
+              style: TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13.5),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),

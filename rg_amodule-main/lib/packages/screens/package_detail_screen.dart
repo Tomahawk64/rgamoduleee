@@ -156,11 +156,7 @@ class _DetailView extends StatelessWidget {
                             ],
                           ],
                         ),
-                        Text(
-                          package.modeLabel,
-                          style: tt.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant),
-                        ),
+
                       ],
                     ),
                   ],

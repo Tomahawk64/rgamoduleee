@@ -192,6 +192,15 @@ class AuthRepository {
   Future<UserModel> _fetchOrCreateProfile(supa.User authUser) async {
     var profile = await fetchProfile(authUser.id);
     if (profile != null) {
+      // Block disabled accounts before returning
+      if (!profile.isActive) {
+        await _client.auth.signOut();
+        throw const AuthRepositoryException(
+          'Your account has been disabled by an administrator. '
+          'Please contact support.',
+          code: 'account_disabled',
+        );
+      }
       // profiles table has no email column — fill it from auth.users
       if (profile.email.isEmpty && authUser.email != null) {
         profile = profile.copyWith(email: authUser.email);
@@ -252,14 +261,23 @@ class AuthRepository {
 
   Future<void> _ensurePanditDetails(String userId) async {
     try {
-      await _client.from('pandit_details').upsert({
+      // Only insert if the row doesn't exist yet — never overwrite existing
+      // settings like consultation_enabled, specialties, etc.
+      final existing = await _client
+          .from('pandit_details')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+      if (existing != null) return; // Row already exists, don't overwrite
+
+      await _client.from('pandit_details').insert({
         'id': userId,
         'specialties': <String>[],
         'languages': <String>['Hindi'],
         'experience_years': 0,
         'is_online': false,
         'consultation_enabled': false,
-      }, onConflict: 'id');
+      });
     } catch (_) {
       // Ignore bootstrap errors; profile/auth flow must continue.
     }

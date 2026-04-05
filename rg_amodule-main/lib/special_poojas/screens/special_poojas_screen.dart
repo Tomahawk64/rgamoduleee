@@ -245,6 +245,34 @@ class _StatPill extends StatelessWidget {
   }
 }
 
+// ── Gradient Banner fallback ──────────────────────────────────────────────────
+
+class _GradientBanner extends StatelessWidget {
+  const _GradientBanner({required this.gradient});
+  final List<Color> gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 100,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: gradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Center(
+        child: Opacity(
+          opacity: 0.2,
+          child: Icon(Icons.temple_hindu, size: 80, color: Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Special Pooja Card ────────────────────────────────────────────────────────
 
 class _SpecialPoojaCard extends StatelessWidget {
@@ -287,81 +315,49 @@ class _SpecialPoojaCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Gradient banner ───────────────────────────────────────
-              Container(
-                height: 100,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: _gradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
+              // ── Image / Gradient banner ───────────────────────────────
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
                 ),
                 child: Stack(
                   children: [
+                    // Base: image if available, else gradient
                     if ((pooja.imageUrl ?? '').trim().isNotEmpty)
-                      Positioned.fill(
-                        child: ClipRRect(
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(16),
-                          ),
-                          child: pooja.imageUrl!.startsWith('assets/')
-                              ? Image.asset(
-                                  pooja.imageUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => Container(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    alignment: Alignment.center,
-                                    child: const Icon(
-                                      Icons.temple_hindu,
-                                      color: Colors.white70,
-                                      size: 42,
-                                    ),
-                                  ),
-                                )
-                              : Image.network(
-                                  pooja.imageUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => Container(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    alignment: Alignment.center,
-                                    child: const Icon(
-                                      Icons.temple_hindu,
-                                      color: Colors.white70,
-                                      size: 42,
-                                    ),
-                                  ),
-                                ),
-                        ),
-                      )
+                      pooja.imageUrl!.startsWith('assets/')
+                          ? Image.asset(
+                              pooja.imageUrl!,
+                              height: 100,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            )
+                          : Image.network(
+                              pooja.imageUrl!,
+                              height: 100,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => _GradientBanner(
+                                gradient: _gradient,
+                              ),
+                            )
                     else
+                      _GradientBanner(gradient: _gradient),
+
+                    // Overlay: temple-name tag
+                    if (pooja.templeName != null)
                       Positioned(
-                        right: -20,
-                        top: -20,
-                        child: Opacity(
-                          opacity: 0.15,
-                          child: Icon(
-                            Icons.temple_hindu,
-                            size: 100,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (pooja.templeName != null)
-                            Container(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Align(
+                            alignment: Alignment.bottomLeft,
+                            child: Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
+                                color: Colors.black.withValues(alpha: 0.4),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
@@ -373,9 +369,9 @@ class _SpecialPoojaCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                        ],
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

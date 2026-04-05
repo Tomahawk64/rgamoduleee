@@ -83,6 +83,18 @@ class MockAdminRepository implements IAdminRepository {
   }
 
   @override
+  Future<AdminPandit> updatePanditStats(
+      String id, {required double rating, required int totalSessions}) async {
+    await _delay();
+    final idx = _pandits.indexWhere((p) => p.id == id);
+    if (idx != -1) {
+      _pandits[idx] = _pandits[idx]
+          .copyWith(rating: rating, totalSessions: totalSessions);
+    }
+    return _pandits[idx];
+  }
+
+  @override
   Future<AdminPandit> updateConsultationRates(
       String id, List<AdminRate> rates) async {
     await _delay();

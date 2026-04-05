@@ -106,7 +106,21 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _loadProfile(supa.User authUser) async {
     try {
       final profile = await _repository.fetchOrCreateProfile(authUser);
+      // Extra guard: if the profile was fetched but is_active is false —
+      // the repository already called signOut(); reflect that here.
+      if (!profile.isActive) {
+        state = const AuthError(
+          'Your account has been disabled by an administrator.',
+        );
+        return;
+      }
       state = AuthAuthenticated(profile);
+    } on AuthRepositoryException catch (e) {
+      if (e.code == 'account_disabled') {
+        state = AuthError(e.message);
+      } else {
+        state = const AuthUnauthenticated();
+      }
     } catch (_) {
       state = const AuthUnauthenticated();
     }

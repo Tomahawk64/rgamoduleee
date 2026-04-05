@@ -31,9 +31,6 @@ final panditDashboardProvider = StateNotifierProvider.autoDispose<
 
 // ── Convenience selectors ─────────────────────────────────────────────────────
 
-final panditNewRequestsProvider = Provider.autoDispose<List<PanditAssignment>>(
-  (ref) => ref.watch(panditDashboardProvider).newRequests,
-);
 
 final panditActiveAssignmentsProvider =
     Provider.autoDispose<List<PanditAssignment>>(

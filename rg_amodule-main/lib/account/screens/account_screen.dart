@@ -260,11 +260,6 @@ class _UserAccountView extends ConsumerWidget {
                       onTap: () => context.push(Routes.editProfile),
                     ),
                     _MenuItem(
-                      icon: Icons.location_on_outlined,
-                      label: 'Manage Addresses',
-                      onTap: () => context.push(Routes.manageAddresses),
-                    ),
-                    _MenuItem(
                       icon: Icons.notifications_outlined,
                       label: 'Notifications',
                       onTap: () => context.push(Routes.notifications),
@@ -613,29 +608,25 @@ class _ProfileHeader extends StatelessWidget {
       child: Column(
         children: [
           // Avatar
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [color, color.withValues(alpha: 0.6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                user.name.isNotEmpty
-                    ? user.name[0].toUpperCase()
-                    : '?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+          CircleAvatar(
+            radius: 40,
+            backgroundColor: color.withValues(alpha: 0.2),
+            backgroundImage: (user.avatarUrl != null &&
+                    user.avatarUrl!.isNotEmpty)
+                ? NetworkImage(user.avatarUrl!)
+                : null,
+            child: (user.avatarUrl == null || user.avatarUrl!.isEmpty)
+                ? Text(
+                    user.name.isNotEmpty
+                        ? user.name[0].toUpperCase()
+                        : '?',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(height: 12),
           Text(

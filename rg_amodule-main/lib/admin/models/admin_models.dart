@@ -129,6 +129,9 @@ class AdminPandit {
     String? name,
     List<String>? specialties,
     List<String>? languages,
+    double? rating,
+    int? totalBookings,
+    int? totalSessions,
     bool? isActive,
     bool? consultationEnabled,
     List<AdminRate>? consultationRates,
@@ -141,9 +144,9 @@ class AdminPandit {
         name: name ?? this.name,
         specialties: specialties ?? this.specialties,
         languages: languages ?? this.languages,
-        rating: rating,
-        totalBookings: totalBookings,
-        totalSessions: totalSessions,
+        rating: rating ?? this.rating,
+        totalBookings: totalBookings ?? this.totalBookings,
+        totalSessions: totalSessions ?? this.totalSessions,
         isActive: isActive ?? this.isActive,
         consultationEnabled: consultationEnabled ?? this.consultationEnabled,
         consultationRates: consultationRates ?? this.consultationRates,
@@ -175,6 +178,7 @@ class AdminBookingRow {
     this.timeSlot,
     this.address,
     this.userNotes,
+    this.contactPhone,
   });
 
   final String id;
@@ -195,6 +199,7 @@ class AdminBookingRow {
   final String? timeSlot;
   final String? address;
   final String? userNotes;
+  final String? contactPhone;
 
   String get formattedDate {
     final d = scheduledAt;
@@ -216,6 +221,7 @@ class AdminBookingRow {
     String? timeSlot,
     String? address,
     String? userNotes,
+    String? contactPhone,
   }) =>
       AdminBookingRow(
         id: id,
@@ -235,6 +241,7 @@ class AdminBookingRow {
         timeSlot: timeSlot ?? this.timeSlot,
         address: address ?? this.address,
         userNotes: userNotes ?? this.userNotes,
+        contactPhone: contactPhone ?? this.contactPhone,
       );
 }
 

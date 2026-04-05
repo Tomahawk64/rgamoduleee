@@ -130,16 +130,29 @@ class _DetailView extends ConsumerWidget {
             // ── Location ────────────────────────────────────────────
             _SectionCard(
               title: booking.location.isOnline ? 'Session' : 'Location',
-              child: _DetailRow(
-                icon: booking.location.isOnline
-                    ? Icons.videocam_rounded
-                    : Icons.location_on_rounded,
-                label: booking.location.isOnline ? 'Mode' : 'Address',
-                value: booking.location.isOnline
-                    ? booking.location.meetLink != null
-                        ? 'Online — ${booking.location.meetLink}'
-                        : 'Online — link will be shared after confirmation'
-                    : booking.location.displayAddress,
+              child: Column(
+                children: [
+                  _DetailRow(
+                    icon: booking.location.isOnline
+                        ? Icons.videocam_rounded
+                        : Icons.location_on_rounded,
+                    label: booking.location.isOnline ? 'Mode' : 'Address',
+                    value: booking.location.isOnline
+                        ? booking.location.meetLink != null
+                            ? 'Online — ${booking.location.meetLink}'
+                            : 'Online — link will be shared after confirmation'
+                        : booking.location.displayAddress,
+                  ),
+                  if (booking.location.contactPhone != null &&
+                      booking.location.contactPhone!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _DetailRow(
+                      icon: Icons.phone_rounded,
+                      label: 'Contact',
+                      value: booking.location.contactPhone!,
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 12),

@@ -5,12 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_strings.dart';
-import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/base_scaffold.dart';
-import '../models/product_model.dart';
-import '../providers/shop_provider.dart';
 import '../controllers/shop_controller.dart';
+import '../models/cart_item.dart';
+import '../models/product_model.dart';
+import '../providers/cart_provider_v2.dart';
+import '../providers/shop_provider.dart';
 
 class ShopScreen extends ConsumerStatefulWidget {
   const ShopScreen({super.key});
@@ -31,7 +32,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     final shopState = ref.watch(shopProvider);
-    final cartCount = ref.watch(cartItemCountProvider);
+    final cartCount = ref.watch(cartItemCountProviderV2);
 
     return BaseScaffold(
       title: AppStrings.shop,
@@ -39,7 +40,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       actions: [
         _CartBadge(
           count: cartCount,
-          onTap: () => context.push(Routes.cart),
+          onTap: () => context.push('/shop/cart'),
         ),
         const SizedBox(width: 8),
       ],
@@ -213,16 +214,16 @@ class _ProductCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cartState = ref.watch(cartProvider);
-    final inCart = cartState.containsProduct(product.id);
-    final qty = cartState.quantityOf(product.id);
+    final cartState = ref.watch(cartProviderV2);
+    final inCart = cartState.summary.items.any((item) => item.product.id == product.id);
+    final qty = cartState.summary.items
+        .where((item) => item.product.id == product.id)
+        .firstOrNull?.quantity ?? 0;
     final icon =
         _categoryIcons[product.category] ?? Icons.temple_hindu;
 
     return GestureDetector(
-      onTap: () => context.push(
-        Routes.productDetail.replaceFirst(':id', product.id),
-      ),
+      onTap: () => context.push('/shop/products/${product.id}'),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -363,11 +364,11 @@ class _ProductCard extends ConsumerWidget {
                           ? _InlineQtySelector(
                               qty: qty,
                               onDecrement: () => ref
-                                  .read(cartProvider.notifier)
-                                  .decrement(product.id),
+                                  .read(cartProviderV2.notifier)
+                                  .updateQuantity(product.id, qty - 1),
                               onIncrement: () => ref
-                                  .read(cartProvider.notifier)
-                                  .increment(product.id),
+                                  .read(cartProviderV2.notifier)
+                                  .updateQuantity(product.id, qty + 1),
                             )
                           : ElevatedButton(
                               style: ElevatedButton.styleFrom(
@@ -378,8 +379,8 @@ class _ProductCard extends ConsumerWidget {
                                 ),
                               ),
                               onPressed: () => ref
-                                  .read(cartProvider.notifier)
-                                  .addItem(product),
+                                  .read(cartProviderV2.notifier)
+                                  .addItem(CartItem(product: product, quantity: 1)),
                               child: const Text('Add to Cart'),
                             ),
                     ),

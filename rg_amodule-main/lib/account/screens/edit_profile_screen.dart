@@ -2,7 +2,6 @@
 // Edit profile (name, phone with country picker, avatar) +
 // inline Address Management — replacing the separate Manage Addresses screen.
 
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -134,7 +133,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     await client.from('pandit_details').upsert({
       'id': uid,
       'bio': _bioCtrl.text.trim().isEmpty ? null : _bioCtrl.text.trim(),
-      if (exp != null) 'experience_years': exp,
+      'experience_years': ?exp,
       if (specialties.isNotEmpty) 'specialties': specialties,
       if (languages.isNotEmpty) 'languages': languages,
     }, onConflict: 'id');
@@ -742,7 +741,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _addresses.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (_, i) {
                   final a = _addresses[i];
                   final isDef = a['is_default'] as bool? ?? false;

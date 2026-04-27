@@ -228,7 +228,7 @@ class _StatsGrid extends StatelessWidget {
       ),
       _StatItem(
         value: '${report.totalConsultations}',
-        label: 'Consultations',
+        label: 'Astrology Sessions',
         icon: Icons.videocam_rounded,
         color: AppColors.secondary,
         sub: '+${report.monthlyConsultations} this month',
@@ -416,7 +416,7 @@ class _ModuleGrid extends StatelessWidget {
         route: Routes.adminBookings,
       ),
       _ModuleItem(
-        title: 'Consultations',
+        title: 'Astrology Sessions',
         subtitle: '${state.consultations.length} sessions',
         icon: Icons.video_call_rounded,
         color: AppColors.info,
@@ -432,6 +432,13 @@ class _ModuleGrid extends StatelessWidget {
         route: Routes.adminReports,
       ),
       _ModuleItem(
+        title: 'Booking Statistics',
+        subtitle: 'Pandit & User Stats',
+        icon: Icons.analytics_rounded,
+        color: AppColors.warning,
+        route: Routes.adminStatistics,
+      ),
+      _ModuleItem(
         title: 'Users',
         subtitle: '${state.users.length} registered',
         icon: Icons.people_rounded,
@@ -444,6 +451,13 @@ class _ModuleGrid extends StatelessWidget {
         icon: Icons.shopping_bag_rounded,
         color: const Color(0xFFF59E0B),
         route: Routes.adminProducts,
+      ),
+      _ModuleItem(
+        title: 'Support Tickets',
+        subtitle: 'Help requests queue',
+        icon: Icons.support_agent_rounded,
+        color: const Color(0xFF0F766E),
+        route: Routes.adminSupportTickets,
       ),
     ];
 

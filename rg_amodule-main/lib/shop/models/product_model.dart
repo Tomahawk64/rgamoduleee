@@ -99,6 +99,56 @@ class ProductModel {
   }
 
   bool get inStock => stock > 0;
+
+  factory ProductModel.fromJson(Map<String, dynamic> json) {
+    ProductCategory category = ProductCategory.all;
+    final rawCategory = json['category'];
+    if (rawCategory is String) {
+      category = ProductCategory.values.firstWhere(
+        (c) => c.name == rawCategory,
+        orElse: () => ProductCategory.all,
+      );
+    }
+
+    return ProductModel(
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      description: (json['description'] ?? '').toString(),
+      pricePaise: (json['price_paise'] as num?)?.toInt() ??
+          (json['pricePaise'] as num?)?.toInt() ??
+          0,
+      category: category,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0,
+      reviewCount: (json['review_count'] as num?)?.toInt() ??
+          (json['reviewCount'] as num?)?.toInt() ??
+          0,
+      stock: (json['stock'] as num?)?.toInt() ?? 0,
+      includes: (json['includes'] as List?)?.map((e) => e.toString()).toList() ??
+          const <String>[],
+      isBestSeller: json['is_best_seller'] as bool? ??
+          json['isBestSeller'] as bool? ??
+          false,
+      imageAsset: json['image_asset'] as String? ?? json['imageAsset'] as String?,
+      imageUrl: json['image_url'] as String? ?? json['imageUrl'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'price_paise': pricePaise,
+      'category': category.name,
+      'rating': rating,
+      'review_count': reviewCount,
+      'stock': stock,
+      'includes': includes,
+      'is_best_seller': isBestSeller,
+      'image_asset': imageAsset,
+      'image_url': imageUrl,
+    };
+  }
 }
 
 // ── Mock Catalogue ────────────────────────────────────────────────────────────

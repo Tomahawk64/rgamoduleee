@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../auth/providers/auth_provider.dart';
 import '../../booking/models/booking_status.dart';
@@ -16,6 +15,8 @@ import '../../core/providers/supabase_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/supabase_storage_upload_helper.dart';
+import '../../offline_booking/models/offline_booking_models.dart';
+import '../../offline_booking/providers/offline_booking_provider.dart';
 import '../../widgets/base_scaffold.dart';
 import '../controllers/pandit_dashboard_controller.dart';
 import '../models/pandit_dashboard_models.dart';
@@ -35,7 +36,7 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -143,10 +144,6 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
                         _StatsRow(state: state),
                         const SizedBox(height: 16),
 
-                        // ── Earnings card ─────────────────────────────────
-                        if (state.earnings != null)
-                          _EarningsCard(earnings: state.earnings!),
-
                         const SizedBox(height: 8),
                       ],
                     ),
@@ -160,6 +157,7 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
                       activeCount: state.activeCount,
                       completedCount: state.completedCount,
                       consultationCount: 0, // updated live via provider
+                      offlineCount: 0, // updated live via provider
                     ),
                   ),
                 ],
@@ -179,6 +177,9 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
                     _ConsultationRequestsTab(
                       panditId: user?.id ?? '',
                     ),
+                    _OfflineBookingsTab(
+                      panditId: user?.id ?? '',
+                    ),
                   ],
                 ),
               ),
@@ -189,7 +190,7 @@ class _PanditScreenState extends ConsumerState<PanditScreen>
 
 // ── Profile Header ────────────────────────────────────────────────────────────
 
-class _ProfileHeader extends StatefulWidget {
+class _ProfileHeader extends ConsumerStatefulWidget {
   const _ProfileHeader({
     required this.state,
     required this.user,
@@ -201,10 +202,10 @@ class _ProfileHeader extends StatefulWidget {
   final Future<void> Function(Uint8List bytes, String ext) onUploadPhoto;
 
   @override
-  State<_ProfileHeader> createState() => _ProfileHeaderState();
+  ConsumerState<_ProfileHeader> createState() => _ProfileHeaderState();
 }
 
-class _ProfileHeaderState extends State<_ProfileHeader> {
+class _ProfileHeaderState extends ConsumerState<_ProfileHeader> {
   bool _uploading = false;
   Uint8List? _pendingBytes; // shows optimistic preview before upload completes
 
@@ -381,6 +382,132 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
                 ),
               ),
 
+              // Online/Offline toggle
+              Consumer(
+                builder: (context, ref, child) {
+                  return GestureDetector(
+                    onTap: widget.state.togglingOnline
+                        ? null
+                        : () => ref.read(panditDashboardProvider.notifier).toggleOnlineStatus(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: (widget.state.profile?.isOnline ?? false)
+                            ? Colors.green.withValues(alpha: 0.2)
+                            : Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: (widget.state.profile?.isOnline ?? false)
+                              ? Colors.green.withValues(alpha: 0.5)
+                              : Colors.white.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            (widget.state.profile?.isOnline ?? false)
+                                ? Icons.circle
+                                : Icons.circle_outlined,
+                            color: (widget.state.profile?.isOnline ?? false)
+                                ? Colors.green
+                                : Colors.white70,
+                            size: 10,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            (widget.state.profile?.isOnline ?? false) ? 'Online' : 'Offline',
+                            style: TextStyle(
+                              color: (widget.state.profile?.isOnline ?? false)
+                                  ? Colors.green
+                                  : Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (widget.state.togglingOnline) ...[
+                            const SizedBox(width: 4),
+                            const SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+
+              // Offline Booking toggle
+              Consumer(
+                builder: (context, ref, child) {
+                  return GestureDetector(
+                    onTap: widget.state.togglingOfflineBooking
+                        ? null
+                        : () => ref.read(panditDashboardProvider.notifier).toggleOfflineBooking(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: (widget.state.profile?.offlineBookingEnabled ?? false)
+                            ? Colors.blue.withValues(alpha: 0.2)
+                            : Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: (widget.state.profile?.offlineBookingEnabled ?? false)
+                              ? Colors.blue.withValues(alpha: 0.5)
+                              : Colors.white.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            (widget.state.profile?.offlineBookingEnabled ?? false)
+                                ? Icons.event_available
+                                : Icons.event_busy,
+                            color: (widget.state.profile?.offlineBookingEnabled ?? false)
+                                ? Colors.blue
+                                : Colors.white70,
+                            size: 10,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            (widget.state.profile?.offlineBookingEnabled ?? false) ? 'Booking' : 'No Booking',
+                            style: TextStyle(
+                              color: (widget.state.profile?.offlineBookingEnabled ?? false)
+                                  ? Colors.blue
+                                  : Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (widget.state.togglingOfflineBooking) ...[
+                            const SizedBox(width: 4),
+                            const SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+
               // Verified badge
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -515,170 +642,6 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-// ── Earnings Card ─────────────────────────────────────────────────────────────
-
-class _EarningsCard extends StatelessWidget {
-  const _EarningsCard({required this.earnings});
-  final EarningsSummary earnings;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.account_balance_wallet_outlined,
-                  size: 16, color: AppColors.success),
-              const SizedBox(width: 6),
-              const Text(
-                'Earnings Summary',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${earnings.completedCount} bookings total',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.success,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _EarningsTile(
-                  label: 'Total Earned',
-                  value: earnings.formattedTotal,
-                  color: AppColors.success,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _EarningsTile(
-                  label: 'This Month',
-                  value: earnings.formattedMonth,
-                  color: AppColors.primary,
-                  sub: '${earnings.thisMonthCount} services',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _EarningsTile(
-                  label: 'Pending Payout',
-                  value: earnings.formattedPending,
-                  color: AppColors.warning,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.info.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline,
-                    size: 13, color: AppColors.info),
-                const SizedBox(width: 6),
-                const Expanded(
-                  child: Text(
-                    'Payouts processed within 3 business days of service completion.',
-                    style: TextStyle(fontSize: 11, color: AppColors.info),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EarningsTile extends StatelessWidget {
-  const _EarningsTile({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.sub,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-  final String? sub;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          if (sub != null)
-            Text(
-              sub!,
-              style: TextStyle(fontSize: 9, color: color.withValues(alpha: 0.7)),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Active Consultation Banner ────────────────────────────────────────────────
 //
 // Appears on the pandit dashboard when a user has started a live consultation
@@ -696,7 +659,7 @@ class _ActiveConsultationBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(
-      panditActiveSessionProvider('${panditId}|${panditName}'),
+      panditActiveSessionProvider('$panditId|$panditName'),
     );
 
     return async.when(
@@ -729,7 +692,7 @@ class _ActiveConsultationBanner extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Live Consultation Active',
+                      'Astrology Active',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -779,12 +742,14 @@ class _TabHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.activeCount,
     required this.completedCount,
     required this.consultationCount,
+    required this.offlineCount,
   });
 
   final TabController tabController;
   final int activeCount;
   final int completedCount;
   final int consultationCount;
+  final int offlineCount;
 
   @override
   double get minExtent => 48;
@@ -795,7 +760,8 @@ class _TabHeaderDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(_TabHeaderDelegate old) =>
       old.activeCount != activeCount ||
       old.completedCount != completedCount ||
-      old.consultationCount != consultationCount;
+      old.consultationCount != consultationCount ||
+      old.offlineCount != offlineCount;
 
   @override
   Widget build(
@@ -814,7 +780,8 @@ class _TabHeaderDelegate extends SliverPersistentHeaderDelegate {
         tabs: [
           _CountTab(label: 'Active', count: activeCount),
           const Tab(text: 'Completed'),
-          _CountTab(label: 'Consults', count: consultationCount),
+          _CountTab(label: 'Astrology', count: consultationCount),
+          _CountTab(label: 'Offline', count: offlineCount),
         ],
       ),
     );
@@ -1098,6 +1065,10 @@ class _ConsultationRequestsTab extends ConsumerWidget {
       return const Center(child: Text('Please login to view requests.'));
     }
 
+    ref.listen(consultationRealtimeTickProvider, (_, __) {
+      ref.invalidate(panditScheduledConsultationsProvider(panditId));
+    });
+
     final async = ref.watch(panditScheduledConsultationsProvider(panditId));
 
     return async.when(
@@ -1169,7 +1140,7 @@ class _ConsultationRequestsTab extends ConsumerWidget {
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: sorted.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (_, i) => _ConsultationRequestCard(
               request: sorted[i],
               panditId: panditId,
@@ -1479,24 +1450,33 @@ class _ConsultationRequestCardState
             ),
           ],
 
-          // Start Chat button for confirmed requests
+          // Chat unlock for confirmed requests
           if (r.status == ConsultationRequestStatus.confirmed && !_busy) ...[
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => _startChat(context, ref, r),
-                icon: const Icon(Icons.chat_rounded, size: 18),
-                label: const Text('Start Chat'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+            if (!r.isPaid)
+              const Text(
+                'Waiting for user payment to unlock Chat Now.',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _startChat(context, ref, r),
+                  icon: const Icon(Icons.chat_rounded, size: 18),
+                  label: const Text('Chat Now'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
               ),
-            ),
           ],
 
           if (_busy)
@@ -1541,5 +1521,460 @@ class _ConsultationRequestCardState
     );
     if (t == null) return null;
     return DateTime(d.year, d.month, d.day, t.hour, t.minute);
+  }
+}
+
+// ── Offline Bookings Tab ──────────────────────────────────────────────────────
+//
+// Shows pending offline booking requests for this pandit.
+// Pandit can accept or reject each request with optional notes.
+
+class _OfflineBookingsTab extends ConsumerStatefulWidget {
+  const _OfflineBookingsTab({required this.panditId});
+  final String panditId;
+
+  @override
+  ConsumerState<_OfflineBookingsTab> createState() =>
+      _OfflineBookingsTabState();
+}
+
+class _OfflineBookingsTabState extends ConsumerState<_OfflineBookingsTab> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.panditId.isNotEmpty) {
+      Future.microtask(() => ref
+          .read(panditBookingsProvider(widget.panditId).notifier)
+          .loadPendingBookings(widget.panditId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.panditId.isEmpty) {
+      return const Center(child: Text('Please login to view offline bookings.'));
+    }
+
+    final state = ref.watch(panditBookingsProvider(widget.panditId));
+
+    // Error listener
+    ref.listen<PanditBookingsState>(
+        panditBookingsProvider(widget.panditId), (_, next) {
+      if (next.error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(next.error!),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    });
+
+    if (state.loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (state.pendingBookings.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.location_off_outlined,
+                size: 64,
+                color: AppColors.primary.withValues(alpha: 0.3)),
+            const SizedBox(height: 12),
+            const Text(
+              'No offline booking requests',
+              style: TextStyle(
+                fontSize: 15,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'When users book an offline pooja, it will appear here.',
+              style: TextStyle(fontSize: 12, color: AppColors.textHint),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => ref
+          .read(panditBookingsProvider(widget.panditId).notifier)
+          .loadPendingBookings(widget.panditId),
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        itemCount: state.pendingBookings.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        itemBuilder: (_, i) => _OfflineBookingCard(
+          booking: state.pendingBookings[i],
+          panditId: widget.panditId,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Offline Booking Card ──────────────────────────────────────────────────────
+
+class _OfflineBookingCard extends ConsumerStatefulWidget {
+  const _OfflineBookingCard({
+    required this.booking,
+    required this.panditId,
+  });
+
+  final OfflineBooking booking;
+  final String panditId;
+
+  @override
+  ConsumerState<_OfflineBookingCard> createState() =>
+      _OfflineBookingCardState();
+}
+
+class _OfflineBookingCardState extends ConsumerState<_OfflineBookingCard> {
+  bool _busy = false;
+
+  Future<void> _respond(String action) async {
+    String? notes;
+    if (action == 'reject') {
+      final controller = TextEditingController();
+      notes = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Reject Booking'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'Reason for rejection (optional)',
+            ),
+            maxLines: 2,
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, controller.text.trim()),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white),
+              child: const Text('Reject'),
+            ),
+          ],
+        ),
+      );
+      if (notes == null && !mounted) return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(panditBookingsProvider(widget.panditId).notifier)
+          .respondToBooking(
+            bookingId: widget.booking.id,
+            action: action, // 'accept' or 'reject'
+            panditNotes: notes,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(action == 'accept'
+              ? 'Booking accepted!'
+              : 'Booking rejected'),
+          backgroundColor:
+              action == 'accept' ? AppColors.success : AppColors.error,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Action failed: $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.booking;
+    final statusColor = _offlineStatusColor(b.status);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: b.status == OfflineBookingStatus.pending
+            ? Border.all(
+                color: Colors.orange.withValues(alpha: 0.4), width: 1.5)
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Service name + status chip
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.location_on,
+                    color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      b.serviceName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (b.serviceDescription != null)
+                      Text(
+                        b.serviceDescription!,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  b.status.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Date + Time
+          Row(
+            children: [
+              const Icon(Icons.calendar_today,
+                  size: 12, color: AppColors.textSecondary),
+              const SizedBox(width: 4),
+              Text(
+                b.formattedDate,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(width: 12),
+              const Icon(Icons.access_time,
+                  size: 12, color: AppColors.textSecondary),
+              const SizedBox(width: 4),
+              Text(
+                b.bookingTime,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const Spacer(),
+              Text(
+                b.amountLabel,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // Address
+          Row(
+            children: [
+              const Icon(Icons.location_on_outlined,
+                  size: 12, color: AppColors.textSecondary),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  [b.addressLine1, b.city, b.state]
+                      .whereType<String>()
+                      .where((s) => s.isNotEmpty)
+                      .join(', '),
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+
+          // Special requirements
+          if ((b.specialRequirements ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '\u{1F4DD} "${b.specialRequirements}"',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic),
+              ),
+            ),
+          ],
+
+          // Accept / Reject buttons for pending
+          if (b.status == OfflineBookingStatus.pending && !_busy) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _respond('accept'),
+                    icon: const Icon(Icons.check, size: 16),
+                    label: const Text('Accept'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _respond('reject'),
+                    icon: const Icon(Icons.close, size: 16),
+                    label: const Text('Reject'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      side: const BorderSide(color: AppColors.error),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // Busy indicator
+          if (_busy) ...[
+            const SizedBox(height: 12),
+            const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ],
+
+          // Already responded state
+          if (b.status == OfflineBookingStatus.accepted) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle,
+                      size: 14, color: AppColors.success),
+                  SizedBox(width: 4),
+                  Text('Accepted',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+          if (b.status == OfflineBookingStatus.rejected) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cancel, size: 14, color: AppColors.error),
+                  SizedBox(width: 4),
+                  Text('Rejected',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _offlineStatusColor(OfflineBookingStatus s) {
+    switch (s) {
+      case OfflineBookingStatus.pending:
+        return Colors.orange;
+      case OfflineBookingStatus.accepted:
+        return Colors.blue;
+      case OfflineBookingStatus.paid:
+      case OfflineBookingStatus.confirmed:
+      case OfflineBookingStatus.completed:
+        return AppColors.success;
+      case OfflineBookingStatus.inProgress:
+        return AppColors.primary;
+      case OfflineBookingStatus.rejected:
+      case OfflineBookingStatus.cancelled:
+        return AppColors.error;
+      case OfflineBookingStatus.refunded:
+        return Colors.purple;
+    }
   }
 }

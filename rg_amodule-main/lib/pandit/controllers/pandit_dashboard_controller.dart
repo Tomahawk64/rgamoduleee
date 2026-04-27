@@ -13,19 +13,21 @@ class PanditDashboardState {
   const PanditDashboardState({
     this.assignments = const [],
     this.profile,
-    this.earnings,
     this.consultationEnabled = false,
     this.loading = false,
     this.togglingConsultation = false,
+    this.togglingOnline = false,
+    this.togglingOfflineBooking = false,
     this.error,
   });
 
   final List<PanditAssignment> assignments;
   final PanditProfile? profile;
-  final EarningsSummary? earnings;
   final bool consultationEnabled;
   final bool loading;
   final bool togglingConsultation;
+  final bool togglingOnline;
+  final bool togglingOfflineBooking;
   final String? error;
 
   // ── Filtered views ─────────────────────────────────────────────────────────
@@ -45,22 +47,24 @@ class PanditDashboardState {
   PanditDashboardState copyWith({
     List<PanditAssignment>? assignments,
     PanditProfile? profile,
-    EarningsSummary? earnings,
     bool? consultationEnabled,
     bool? loading,
     bool? togglingConsultation,
+    bool? togglingOnline,
+    bool? togglingOfflineBooking,
     String? error,
     bool clearError = false,
   }) =>
       PanditDashboardState(
         assignments: assignments ?? this.assignments,
         profile: profile ?? this.profile,
-        earnings: earnings ?? this.earnings,
         consultationEnabled:
             consultationEnabled ?? this.consultationEnabled,
         loading: loading ?? this.loading,
         togglingConsultation:
             togglingConsultation ?? this.togglingConsultation,
+        togglingOnline: togglingOnline ?? this.togglingOnline,
+        togglingOfflineBooking: togglingOfflineBooking ?? this.togglingOfflineBooking,
         error: clearError ? null : error ?? this.error,
       );
 }
@@ -85,15 +89,12 @@ class PanditDashboardController
       final results = await Future.wait([
         _repo.fetchAssignments(_panditId),
         _repo.fetchProfile(_panditId),
-        _repo.fetchEarnings(_panditId),
       ]);
       final assignments = results[0] as List<PanditAssignment>;
       final profile = results[1] as PanditProfile;
-      final earnings = results[2] as EarningsSummary;
       state = state.copyWith(
         assignments: assignments,
         profile: profile,
-        earnings: earnings,
         consultationEnabled: profile.consultationEnabled,
         loading: false,
       );
@@ -119,7 +120,6 @@ class PanditDashboardController
         );
       }).toList();
       state = state.copyWith(assignments: updated, clearError: true);
-      _refreshEarnings();
     } catch (_) {
       state = state.copyWith(error: 'Failed to update booking status.');
     }
@@ -148,6 +148,50 @@ class PanditDashboardController
     }
   }
 
+  // ── Toggle online status ───────────────────────────────────────────────────
+
+  Future<void> toggleOnlineStatus() async {
+    final next = !(state.profile?.isOnline ?? false);
+    state = state.copyWith(togglingOnline: true);
+    try {
+      await _repo.setOnlineStatus(_panditId, isOnline: next);
+      // Re-read from DB to confirm the write actually persisted
+      final profile = await _repo.fetchProfile(_panditId);
+      state = state.copyWith(
+        profile: profile,
+        togglingOnline: false,
+        clearError: true,
+      );
+    } catch (_) {
+      state = state.copyWith(
+        togglingOnline: false,
+        error: 'Failed to update online status.',
+      );
+    }
+  }
+
+  // ── Toggle offline booking ───────────────────────────────────────────────
+
+  Future<void> toggleOfflineBooking() async {
+    final next = !(state.profile?.offlineBookingEnabled ?? false);
+    state = state.copyWith(togglingOfflineBooking: true);
+    try {
+      await _repo.setOfflineBookingEnabled(_panditId, enabled: next);
+      // Re-read from DB to confirm the write actually persisted
+      final profile = await _repo.fetchProfile(_panditId);
+      state = state.copyWith(
+        profile: profile,
+        togglingOfflineBooking: false,
+        clearError: true,
+      );
+    } catch (_) {
+      state = state.copyWith(
+        togglingOfflineBooking: false,
+        error: 'Failed to update offline booking status.',
+      );
+    }
+  }
+
   // ── Upload avatar ─────────────────────────────────────────────────────────
 
   Future<void> uploadAvatar(String url) async {
@@ -162,15 +206,6 @@ class PanditDashboardController
     } catch (e) {
       state = state.copyWith(error: 'Failed to update photo: ${e.toString()}');
     }
-  }
-
-  // ── Refresh earnings ──────────────────────────────────────────────────────
-
-  Future<void> _refreshEarnings() async {
-    try {
-      final earnings = await _repo.fetchEarnings(_panditId);
-      state = state.copyWith(earnings: earnings);
-    } catch (_) {}
   }
 
   // ── Convenience lookup ────────────────────────────────────────────────────

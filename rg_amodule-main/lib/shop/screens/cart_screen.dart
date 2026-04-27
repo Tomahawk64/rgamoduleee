@@ -9,14 +9,14 @@ import '../../core/theme/app_colors.dart';
 import '../../widgets/base_scaffold.dart';
 import '../models/cart_item.dart';
 import '../models/product_model.dart';
-import '../providers/shop_provider.dart';
+import '../providers/cart_provider_v2.dart';
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cartState = ref.watch(cartProvider);
+    final cartState = ref.watch(cartProviderV2);
     final summary = cartState.summary;
 
     return BaseScaffold(
@@ -157,9 +157,9 @@ class _CartItemTile extends ConsumerWidget {
           _QtyControl(
             qty: item.quantity,
             onDecrement: () =>
-                ref.read(cartProvider.notifier).decrement(product.id),
+                ref.read(cartProviderV2.notifier).updateQuantity(product.id, item.quantity - 1),
             onIncrement: () =>
-                ref.read(cartProvider.notifier).increment(product.id),
+                ref.read(cartProviderV2.notifier).updateQuantity(product.id, item.quantity + 1),
           ),
         ],
       ),

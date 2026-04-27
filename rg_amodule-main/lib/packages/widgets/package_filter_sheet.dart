@@ -262,40 +262,6 @@ class _CategoryPicker extends StatelessWidget {
   }
 }
 
-class _ModePicker extends StatelessWidget {
-  const _ModePicker({required this.value, required this.onChange});
-  final PackageMode? value;
-  final ValueChanged<PackageMode?> onChange;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    const modes = [
-      (null, 'All', Icons.apps_rounded),
-      (PackageMode.online, 'Online', Icons.videocam_rounded),
-      (PackageMode.offline, 'On-site', Icons.home_rounded),
-      (PackageMode.both, 'Both', Icons.swap_horiz_rounded),
-    ];
-    return Wrap(
-      spacing: 8,
-      children: modes.map((m) {
-        final selected = m.$1 == value;
-        return ChoiceChip(
-          avatar: Icon(m.$3, size: 14),
-          label: Text(m.$2),
-          selected: selected,
-          onSelected: (_) => onChange(m.$1),
-          selectedColor: cs.primaryContainer,
-          labelStyle: TextStyle(
-            color: selected ? cs.onPrimaryContainer : null,
-            fontWeight: selected ? FontWeight.w700 : null,
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
 class _PriceRangePicker extends StatelessWidget {
   const _PriceRangePicker(
       {required this.min, required this.max, required this.onChange});

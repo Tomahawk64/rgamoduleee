@@ -19,7 +19,7 @@ class AppStrings {
   static const String home = 'Home';
   static const String packages = 'Packages';
   static const String booking = 'Booking';
-  static const String consultation = 'Consultation';
+  static const String consultation = 'Astrology';
   static const String shop = 'Shop';
   static const String admin = 'Admin';
   static const String pandit = 'Pandit';

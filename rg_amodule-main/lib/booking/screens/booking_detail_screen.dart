@@ -368,7 +368,7 @@ class _PanditSection extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 booking.location.isOnline
-                    ? 'Pandit profile is visible for live consultation bookings.'
+                    ? 'Pandit profile is visible for astrology bookings.'
                     : 'Profile is now visible because the booking is within the final 24 hours.',
                 style: TextStyle(
                   color: AppColors.textSecondary,

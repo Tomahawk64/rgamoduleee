@@ -218,7 +218,11 @@ class BookingWizardController extends StateNotifier<BookingWizardState> {
 
   // ── Step 4: Confirm → submit booking ─────────────────────────────────────
 
-  Future<void> submitBooking(String userId) async {
+  Future<void> submitBooking(
+    String userId, {
+    bool isPaid = false,
+    String? paymentId,
+  }) async {
     if (!state.draft.readyToConfirm) {
       state = state.copyWith(error: 'Please complete all steps first.');
       return;
@@ -228,6 +232,8 @@ class BookingWizardController extends StateNotifier<BookingWizardState> {
       final booking = await _repository.createBooking(
         draft: state.draft,
         userId: userId,
+        isPaid: isPaid,
+        paymentId: paymentId,
       );
       state = state.copyWith(
         submitting: false,

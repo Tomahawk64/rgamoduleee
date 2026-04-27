@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../models/cart_item.dart';
 import '../models/product_model.dart';
+import '../providers/cart_provider_v2.dart';
 import '../providers/shop_provider.dart';
 
 class ProductDetailScreen extends ConsumerWidget {
@@ -55,9 +57,11 @@ class ProductDetailScreen extends ConsumerWidget {
       );
     }
 
-    final cartState = ref.watch(cartProvider);
-    final inCart = cartState.containsProduct(product.id);
-    final qty = cartState.quantityOf(product.id);
+    final cartState = ref.watch(cartProviderV2);
+    final inCart = cartState.summary.items.any((item) => item.product.id == product!.id);
+    final qty = cartState.summary.items
+        .where((item) => item.product.id == product!.id)
+        .firstOrNull?.quantity ?? 0;
     final icon = _categoryIcons[product.category] ?? Icons.temple_hindu;
 
     return Scaffold(
@@ -73,7 +77,7 @@ class ProductDetailScreen extends ConsumerWidget {
             actions: [
               Consumer(
                 builder: (_, ref, _) {
-                  final count = ref.watch(cartItemCountProvider);
+                  final count = ref.watch(cartItemCountProviderV2);
                   return _CartButton(count: count);
                 },
               ),
@@ -292,12 +296,14 @@ class ProductDetailScreen extends ConsumerWidget {
         product: product,
         inCart: inCart,
         qty: qty,
-        onAdd: () => ref.read(cartProvider.notifier).addItem(product!),
+        onAdd: () => ref.read(cartProviderV2.notifier).addItem(
+          CartItem(product: product!, quantity: 1),
+        ),
         onDecrement: () =>
-            ref.read(cartProvider.notifier).decrement(product!.id),
+            ref.read(cartProviderV2.notifier).updateQuantity(product!.id, qty - 1),
         onIncrement: () =>
-            ref.read(cartProvider.notifier).increment(product!.id),
-        onViewCart: () => context.push(Routes.cart),
+            ref.read(cartProviderV2.notifier).updateQuantity(product!.id, qty + 1),
+        onViewCart: () => context.push('/shop/cart'),
       ),
     );
   }

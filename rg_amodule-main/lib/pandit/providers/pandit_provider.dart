@@ -46,10 +46,6 @@ final panditProfileProvider = Provider.autoDispose<PanditProfile?>(
   (ref) => ref.watch(panditDashboardProvider).profile,
 );
 
-final panditEarningsProvider = Provider.autoDispose<EarningsSummary?>(
-  (ref) => ref.watch(panditDashboardProvider).earnings,
-);
-
 final panditConsultationEnabledProvider = Provider.autoDispose<bool>(
   (ref) => ref.watch(panditDashboardProvider).consultationEnabled,
 );

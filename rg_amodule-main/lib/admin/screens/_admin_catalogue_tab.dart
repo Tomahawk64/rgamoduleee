@@ -254,7 +254,7 @@ class _ItemTile extends StatelessWidget {
                 width: 36,
                 height: 36,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _iconFallback(accentColor),
+                errorBuilder: (_, _, _) => _iconFallback(accentColor),
               ),
             )
           : _iconFallback(accentColor),

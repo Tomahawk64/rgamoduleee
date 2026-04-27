@@ -257,6 +257,8 @@ class SessionController extends StateNotifier<SessionState> {
   Timer? _countdownTimer;
   StreamSubscription<SessionEvent>? _streamSub;
 
+  String get sessionId => state.session.id;
+
   /// Set atomically when a terminal state is reached locally or from server.
   /// Guards against:
   ///   - Double `end_consultation_session` RPC calls
@@ -651,4 +653,108 @@ class PanditsController extends StateNotifier<PanditsState> {
   }
 
   Future<void> refresh() => load();
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PART 3 — LIVE CHAT CONTROLLER
+// Manages live chat requests (immediate start, no scheduling)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Live Chat State ────────────────────────────────────────────────────────────
+
+class LiveChatState {
+  const LiveChatState({
+    this.requesting = false,
+    this.joining = false,
+    this.session,
+    this.error,
+  });
+
+  final bool requesting;
+  final bool joining;
+  final ConsultationSession? session;
+  final String? error;
+
+  LiveChatState copyWith({
+    bool? requesting,
+    bool? joining,
+    ConsultationSession? session,
+    String? error,
+    bool clearError = false,
+  }) =>
+      LiveChatState(
+        requesting: requesting ?? this.requesting,
+        joining: joining ?? this.joining,
+        session: session ?? this.session,
+        error: clearError ? null : (error ?? this.error),
+      );
+}
+
+// ── Live Chat Controller ────────────────────────────────────────────────────────
+
+/// Manages live chat requests for immediate consultation.
+/// Key: `pandit.id`
+class LiveChatController extends StateNotifier<LiveChatState> {
+  LiveChatController({
+    required PanditModel pandit,
+    required ISessionRepository repository,
+  })  : _repository = repository,
+        _pandit = pandit,
+        super(const LiveChatState());
+
+  final ISessionRepository _repository;
+  final PanditModel _pandit;
+
+  /// Request a live chat session (pandit must be online)
+  Future<void> requestLiveChat({
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+    bool isPaid = true,
+    String? paymentId,
+    String? customerNote,
+  }) async {
+    state = state.copyWith(requesting: true, clearError: true);
+    try {
+      final session = await _repository.requestLiveChat(
+        pandit: _pandit,
+        rate: rate,
+        userId: userId,
+        userName: userName,
+        isPaid: isPaid,
+        paymentId: paymentId,
+        customerNote: customerNote,
+      );
+      state = state.copyWith(
+        requesting: false,
+        session: session,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        requesting: false,
+        error: e.toString().contains('PANDIT_NOT_ONLINE')
+            ? 'Pandit is currently offline. Please try again later.'
+            : 'Failed to request live chat: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Join a live chat session (user or pandit)
+  Future<void> joinLiveChat(String sessionId) async {
+    state = state.copyWith(joining: true, clearError: true);
+    try {
+      await _repository.joinLiveChat(sessionId);
+      state = state.copyWith(joining: false);
+    } catch (e) {
+      state = state.copyWith(
+        joining: false,
+        error: 'Failed to join chat: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Reset the controller state
+  void reset() {
+    state = const LiveChatState();
+  }
 }

@@ -25,7 +25,7 @@ const List<HeroSlide> kHeroSlides = [
     actionRoute: '/booking/wizard',
   ),
   HeroSlide(
-    title: 'Online Jyotish\nConsultation',
+    title: 'Online Jyotish\nAstrology',
     subtitle: 'Talk to certified astrologers 24/7',
     icon: Icons.stars_rounded,
     imagePath: 'assets/images/image2.jpg',
@@ -197,7 +197,7 @@ final List<MockPackage> kMockPackages = [
   MockPackage(
     id: 'pkg5',
     title: 'Daily Horoscope Chat',
-    description: 'Weekly chat consultation + daily written predictions',
+    description: 'Weekly chat astrology session + daily written predictions',
     price: 299,
     durationMinutes: 30,
     isOnline: true,

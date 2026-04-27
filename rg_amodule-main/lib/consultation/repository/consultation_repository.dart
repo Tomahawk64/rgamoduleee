@@ -88,12 +88,43 @@ abstract class ISessionRepository {
     String? note,
   });
 
+  /// Marks a consultation request as paid after successful Razorpay payment.
+  Future<void> markConsultationPaid({
+    required String sessionId,
+    required String paymentId,
+  });
+
   /// Starts a confirmed scheduled consultation — transitions it to 'active'
   /// and returns a [ConsultationSession] ready for [connect].
   Future<ConsultationSession> startScheduledSession({
     required ScheduledConsultationRequest request,
     required String currentUserId,
     required String currentUserName,
+  });
+
+  /// Requests a live chat session (immediate start, no scheduling).
+  /// Only works if the pandit is online.
+  Future<ConsultationSession> requestLiveChat({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+    bool isPaid = true,
+    String? paymentId,
+    String? customerNote,
+  });
+
+  /// Joins a live chat session (user or pandit).
+  /// Timer starts only when both parties have joined.
+  Future<void> joinLiveChat(String sessionId);
+
+  /// Gets pending live chat requests for a pandit.
+  Future<List<ScheduledConsultationRequest>> getPendingLiveChats(String panditId);
+
+  /// Pandit responds to a live chat request (accept/reject).
+  Future<void> respondLiveChatRequest({
+    required String sessionId,
+    required String action, // 'accept' or 'reject'
   });
 
   /// Returns a broadcast stream of [SessionEvent]s for the given session.
@@ -136,6 +167,11 @@ abstract class ISessionRepository {
 abstract class IPanditRepository {
   Future<List<PanditModel>> fetchOnlinePandits();
   Future<PanditModel?> fetchPandit(String panditId);
+
+  Future<List<PanditModel>> fetchAlternativeOnlinePandits({
+    required String excludePanditId,
+    int limit = 3,
+  });
 }
 
 // ── Mock Implementations ──────────────────────────────────────────────────────
@@ -304,6 +340,34 @@ class MockSessionRepository implements ISessionRepository {
   }
 
   @override
+  Future<void> markConsultationPaid({
+    required String sessionId,
+    required String paymentId,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    final i = _scheduledRequests.indexWhere((e) => e.id == sessionId);
+    if (i == -1) return;
+    final current = _scheduledRequests[i];
+    _scheduledRequests[i] = ScheduledConsultationRequest(
+      id: current.id,
+      userId: current.userId,
+      userName: current.userName,
+      panditId: current.panditId,
+      panditName: current.panditName,
+      status: current.status,
+      durationMinutes: current.durationMinutes,
+      amountPaise: current.amountPaise,
+      scheduledFor: current.scheduledFor,
+      createdAt: current.createdAt,
+      proposedFor: current.proposedFor,
+      customerNote: current.customerNote,
+      panditNote: current.panditNote,
+      isPaid: true,
+      paymentId: paymentId,
+    );
+  }
+
+  @override
   Future<ConsultationSession> startScheduledSession({
     required ScheduledConsultationRequest request,
     required String currentUserId,
@@ -446,6 +510,45 @@ class MockSessionRepository implements ISessionRepository {
   }
 
   @override
+  Future<ConsultationSession> requestLiveChat({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+    bool isPaid = true,
+    String? paymentId,
+    String? customerNote,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    return ConsultationSession.create(
+      pandit: pandit,
+      rate: rate,
+      userId: userId,
+      userName: userName,
+    );
+  }
+
+  @override
+  Future<void> joinLiveChat(String sessionId) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+  }
+
+  @override
+  Future<List<ScheduledConsultationRequest>> getPendingLiveChats(
+      String panditId) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+    return [];
+  }
+
+  @override
+  Future<void> respondLiveChatRequest({
+    required String sessionId,
+    required String action,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 250));
+  }
+
+  @override
   void dispose(String sessionId) {
     _controllers[sessionId]?.close();
     _controllers.remove(sessionId);
@@ -469,5 +572,17 @@ class MockPanditRepository implements IPanditRepository {
     } catch (_) {
       return null;
     }
+  }
+
+  @override
+  Future<List<PanditModel>> fetchAlternativeOnlinePandits({
+    required String excludePanditId,
+    int limit = 3,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 120));
+    return kMockPandits
+        .where((p) => p.isOnline && p.id != excludePanditId)
+        .take(limit)
+        .toList();
   }
 }

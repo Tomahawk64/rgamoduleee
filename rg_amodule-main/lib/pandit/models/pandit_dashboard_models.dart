@@ -76,10 +76,12 @@ class PanditProfile {
     required this.rating,
     required this.totalBookings,
     required this.consultationEnabled,
+    required this.offlineBookingEnabled,
     required this.yearsExperience,
     required this.languages,
     this.bio,
     this.avatarUrl,
+    this.isOnline = false,
   });
 
   final String id;
@@ -88,10 +90,12 @@ class PanditProfile {
   final double rating;
   final int totalBookings;
   final bool consultationEnabled;
+  final bool offlineBookingEnabled;
   final int yearsExperience;
   final List<String> languages;
   final String? bio;
   final String? avatarUrl;
+  final bool isOnline;
 
   String get initials {
     final parts = name.trim().split(' ');
@@ -99,16 +103,23 @@ class PanditProfile {
     return name.substring(0, name.length.clamp(0, 2)).toUpperCase();
   }
 
-  PanditProfile copyWith({bool? consultationEnabled, String? avatarUrl}) => PanditProfile(
+  PanditProfile copyWith({
+    bool? consultationEnabled,
+    bool? offlineBookingEnabled,
+    String? avatarUrl,
+    bool? isOnline
+  }) => PanditProfile(
         id: id,
         name: name,
         specialties: specialties,
         rating: rating,
         totalBookings: totalBookings,
         consultationEnabled: consultationEnabled ?? this.consultationEnabled,
+        offlineBookingEnabled: offlineBookingEnabled ?? this.offlineBookingEnabled,
         yearsExperience: yearsExperience,
         languages: languages,
         bio: bio,
         avatarUrl: avatarUrl ?? this.avatarUrl,
+        isOnline: isOnline ?? this.isOnline,
       );
 }

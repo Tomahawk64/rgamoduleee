@@ -120,7 +120,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 children: [
                   const SizedBox(height: 12),
                   Text(
-                    'Join RG AModule',
+                    'Join Saral Puja',
                     style:
                         Theme.of(context).textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.bold,

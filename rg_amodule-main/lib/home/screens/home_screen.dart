@@ -77,10 +77,16 @@ class HomeScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 18),
                 const _SectionHeader(
-                  title: 'Live Consultants Available',
+                  title: 'Astrology',
                   padding: EdgeInsets.only(left: 16, right: 16, bottom: 12),
                 ),
                 const _LiveConsultantsSection(),
+                const SizedBox(height: 24),
+                const _SectionHeader(
+                  title: 'Offline Pandit Booking',
+                  padding: EdgeInsets.only(left: 16, right: 16, bottom: 12),
+                ),
+                const _OfflineBookingMarketplaceSection(),
                 const SizedBox(height: 24),
               ],
             ),
@@ -96,6 +102,9 @@ class HomeScreen extends ConsumerWidget {
 class _LiveConsultantsSection extends ConsumerWidget {
   const _LiveConsultantsSection();
 
+  // Max pandits shown on home screen before "More" button
+  static const _kPreviewCount = 4;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(panditsProvider);
@@ -109,7 +118,7 @@ class _LiveConsultantsSection extends ConsumerWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Text(
-          'Unable to load consultants right now.',
+          'Unable to load astrologers right now.',
           style: TextStyle(color: AppColors.textSecondary),
         ),
       );
@@ -121,143 +130,296 @@ class _LiveConsultantsSection extends ConsumerWidget {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16),
         child: Text(
-          'No consultants available currently.',
+          'No astrologers available currently.',
           style: TextStyle(color: AppColors.textSecondary),
         ),
       );
     }
 
-    return SizedBox(
-      height: 228,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: list.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, i) => _LiveConsultantCard(pandit: list[i]),
+    final preview = list.take(_kPreviewCount).toList();
+    final hasMore = list.length > _kPreviewCount;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          ...preview.map((p) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _AstrologerCard(pandit: p),
+              )),
+          if (hasMore)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => context.push(Routes.consultation),
+                icon: const Icon(Icons.people_rounded, size: 18),
+                label: Text(
+                  'View All Astrologers (${list.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: BorderSide(
+                      color: AppColors.primary.withValues(alpha: 0.5)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
-class _LiveConsultantCard extends StatelessWidget {
-  const _LiveConsultantCard({required this.pandit});
+/// Compact rectangular card for an astrologer/pandit on the home screen.
+class _AstrologerCard extends StatelessWidget {
+  const _AstrologerCard({required this.pandit});
 
   final PanditModel pandit;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 206,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => context.push(
-          Routes.consultationProfile.replaceFirst(':id', pandit.id),
-        ),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppColors.primary.withValues(alpha: 0.10),
-                AppColors.secondary.withValues(alpha: 0.10),
-              ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => context.push(
+        Routes.consultationProfile.replaceFirst(':id', pandit.id),
+      ),
+      child: Ink(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
-            border: Border.all(color: AppColors.divider),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-                      backgroundImage: (pandit.avatarUrl ?? '').startsWith('assets/')
-                          ? AssetImage(pandit.avatarUrl!)
-                          : null,
-                      child: (pandit.avatarUrl ?? '').startsWith('assets/')
-                          ? null
-                          : Text(
-                              pandit.initials,
-                              style: const TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: (pandit.isOnline ? AppColors.success : AppColors.warning)
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        pandit.isOnline ? 'Online' : 'Offline',
-                        style: TextStyle(
-                          color:
-                              pandit.isOnline ? AppColors.success : AppColors.warning,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              // ── Avatar ────────────────────────────────────────────────
+              CircleAvatar(
+                radius: 24,
+                backgroundColor:
+                    AppColors.primary.withValues(alpha: 0.15),
+                backgroundImage:
+                    (pandit.avatarUrl ?? '').startsWith('assets/')
+                        ? AssetImage(pandit.avatarUrl!)
+                        : null,
+                child: (pandit.avatarUrl ?? '').startsWith('assets/')
+                    ? null
+                    : Text(
+                        pandit.initials,
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  pandit.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  pandit.specialty,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.star_rounded, color: AppColors.warning, size: 16),
-                    const SizedBox(width: 3),
-                    Text(
-                      pandit.rating.toStringAsFixed(1),
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${pandit.totalSessions} sessions',
-                      style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Row(
+              ),
+              const SizedBox(width: 12),
+
+              // ── Name + specialty + rating ─────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      pandit.rates.isNotEmpty ? pandit.rates.first.priceLabel : '₹—',
+                      pandit.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      pandit.specialty,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded,
+                            color: AppColors.warning, size: 13),
+                        const SizedBox(width: 3),
+                        Text(
+                          pandit.rating.toStringAsFixed(1),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 12),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${pandit.totalSessions} sessions',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Status + Price ────────────────────────────────────────
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: (pandit.isOnline
+                              ? AppColors.success
+                              : AppColors.warning)
+                          .withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      pandit.isOnline ? 'Online' : 'Offline',
+                      style: TextStyle(
+                        color: pandit.isOnline
+                            ? AppColors.success
+                            : AppColors.warning,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const Spacer(),
-                    const Icon(Icons.arrow_forward_rounded,
-                        size: 18, color: AppColors.primary),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    pandit.rates.isNotEmpty
+                        ? pandit.rates.first.priceLabel
+                        : '₹—',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_ios_rounded,
+                  size: 14, color: AppColors.textSecondary),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Offline Booking Marketplace Section ────────────────────────────────────────────────
+class _OfflineBookingMarketplaceSection extends StatelessWidget {
+  const _OfflineBookingMarketplaceSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary.withValues(alpha: 0.08),
+            AppColors.secondary.withValues(alpha: 0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => context.push('/offline-pandits'),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.temple_hindu_rounded,
+                size: 32,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Book Pandits Offline',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Find verified pandits for home ceremonies',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildFeatureChip('Verified'),
+                      const SizedBox(width: 6),
+                      _buildFeatureChip('Flexible Timing'),
+                      const SizedBox(width: 6),
+                      _buildFeatureChip('Secure Payment'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_rounded,
+              color: AppColors.primary,
+              size: 24,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: AppColors.primary,
         ),
       ),
     );

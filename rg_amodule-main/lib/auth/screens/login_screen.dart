@@ -105,7 +105,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final authState = ref.watch(authProvider);
     final isLoading = authState is AuthLoading;
     final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
 
     ref.listen<AuthState>(authProvider, (_, next) {
       if (next is AuthError) _showSnackBar(next.message, isError: true);

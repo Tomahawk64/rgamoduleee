@@ -932,17 +932,8 @@ class _PackageFormSheetState extends State<_PackageFormSheet> {
       ));
   }
 
-  String _modeLabel(PackageMode mode) {
-    switch (mode) {
-      case PackageMode.online:
-        return 'Online only';
-      case PackageMode.offline:
-        return 'On-site only';
-      case PackageMode.both:
-        return 'Online and on-site';
-    }
-  }
 }
+
 
 class _PackageImagePreview extends StatelessWidget {
   const _PackageImagePreview({

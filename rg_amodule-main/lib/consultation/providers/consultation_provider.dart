@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/demo_config.dart';
 import '../../core/providers/supabase_provider.dart';
@@ -8,6 +11,43 @@ import '../models/pandit_model.dart';
 import '../models/scheduled_consultation_request.dart';
 import '../repository/consultation_repository.dart';
 import '../repository/ws_session_repository.dart';
+
+/// Emits a tick whenever consultations or pandit online status changes.
+/// Screens can listen and invalidate relevant providers to get realtime updates.
+final consultationRealtimeTickProvider = StreamProvider<int>((ref) {
+  final client = ref.watch(supabaseClientProvider);
+  final controller = StreamController<int>.broadcast();
+  var tick = 0;
+
+  final channel = client
+      .channel('consultation-realtime-sync')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'consultations',
+        callback: (_) {
+          tick += 1;
+          controller.add(tick);
+        },
+      )
+      .onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'pandit_details',
+        callback: (_) {
+          tick += 1;
+          controller.add(tick);
+        },
+      )
+      .subscribe();
+
+  ref.onDispose(() {
+    channel.unsubscribe();
+    controller.close();
+  });
+
+  return controller.stream;
+});
 
 // ── Repository Providers ──────────────────────────────────────────────────────
 
@@ -50,7 +90,7 @@ final consultationFlowProvider = StateNotifierProvider.family
       pandit = PanditModel(
         id: panditId,
         name: 'Pandit',
-        specialty: 'Consultation',
+        specialty: 'Astrology',
         rating: 0,
         totalSessions: 0,
         isOnline: true,

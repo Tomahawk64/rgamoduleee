@@ -20,6 +20,12 @@ abstract class IPanditDashboardRepository {
   /// Toggle online consultation availability.
   Future<void> setConsultationEnabled(String panditId, {required bool enabled});
 
+  /// Toggle offline booking availability.
+  Future<void> setOfflineBookingEnabled(String panditId, {required bool enabled});
+
+  /// Toggle online status for receiving live chat requests.
+  Future<void> setOnlineStatus(String panditId, {required bool isOnline});
+
   /// Update the pandit's profile photo URL.
   Future<void> updateAvatarUrl(String panditId, String url);
 
@@ -69,6 +75,18 @@ class MockPanditDashboardRepository implements IPanditDashboardRepository {
       {required bool enabled}) async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     // In production: update pandit profile in Supabase
+  }
+
+  @override
+  Future<void> setOnlineStatus(String panditId, {required bool isOnline}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    // In production: update pandit online status in Supabase
+  }
+
+  @override
+  Future<void> setOfflineBookingEnabled(String panditId, {required bool enabled}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    // In production: update pandit offline booking status in Supabase
   }
 
   @override
@@ -311,6 +329,7 @@ const _kDemoProfile = PanditProfile(
   rating: 4.9,
   totalBookings: 1240,
   consultationEnabled: false,
+  offlineBookingEnabled: true,
   yearsExperience: 18,
   languages: ['Hindi', 'Sanskrit', 'Marathi'],
   bio:

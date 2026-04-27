@@ -46,7 +46,7 @@ class _AdminConsultationsScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Consultations',
+        title: const Text('Astrology Sessions',
             style: TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: Colors.white,
         foregroundColor: AppColors.textPrimary,
@@ -307,14 +307,31 @@ class _ConsultationRow extends StatelessWidget {
                   size: 13, color: AppColors.secondary),
               const SizedBox(width: 4),
               Expanded(
-                child: Text(
-                  session.panditName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: AppColors.textPrimary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        session.panditName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: AppColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (session.isPanditOnline) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const Padding(

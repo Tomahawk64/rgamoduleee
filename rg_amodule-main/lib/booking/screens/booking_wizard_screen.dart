@@ -1075,6 +1075,7 @@ class _StepConfirm extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final wz = ref.watch(bookingWizardProvider(pre));
+    final paymentState = ref.watch(paymentProvider);
     final ctrl = ref.read(bookingWizardProvider(pre).notifier);
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
@@ -1195,18 +1196,76 @@ class _StepConfirm extends ConsumerWidget {
 
           // Confirm button
           FilledButton(
-            onPressed: wz.submitting
+            onPressed: wz.submitting || paymentState.isProcessing
                 ? null
-                : () {
-                    final uid = ref.read(currentUserProvider)?.id ?? '';
-                    ctrl.submitBooking(uid);
+                : () async {
+                    final user = ref.read(currentUserProvider);
+                    if (user == null || user.id.isEmpty) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please sign in to continue.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+
+                    final draft = wz.draft;
+                    final appOrderId =
+                        'bk_${DateTime.now().millisecondsSinceEpoch}';
+                    final paymentResult = await ref
+                        .read(paymentProvider.notifier)
+                        .pay(
+                          PaymentRequest(
+                            orderId: appOrderId,
+                            amountPaise: (pkg.effectivePrice * 100).round(),
+                            description:
+                                '${pkg.title} on ${draft.date != null ? _fmtDate(draft.date!) : ''}',
+                            customerName: user.name,
+                            customerEmail: user.email,
+                            customerPhone:
+                                draft.location?.contactPhone ?? (user.phone ?? ''),
+                            metadata: {
+                              'booking_mode': 'pooja_booking',
+                              'package_id': pkg.id,
+                              if (draft.date != null)
+                                'booking_date':
+                                    draft.date!.toIso8601String(),
+                            },
+                          ),
+                        );
+
+                    if (!context.mounted) return;
+                    if (!paymentResult.isSuccess) {
+                      if (paymentResult.status != PaymentStatus.cancelled) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              paymentResult.errorMessage ??
+                                  'Payment failed. Please try again.',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                      return;
+                    }
+
+                    await ctrl.submitBooking(
+                      user.id,
+                      isPaid: true,
+                      paymentId: paymentResult.providerPaymentId ??
+                          paymentResult.transactionId ??
+                          appOrderId,
+                    );
                   },
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 54),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            child: wz.submitting
+            child: (wz.submitting || paymentState.isProcessing)
                 ? const SizedBox(
                     width: 22,
                     height: 22,
@@ -1220,7 +1279,7 @@ class _StepConfirm extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'You will not be charged now. Payment is collected after confirmation.',
+            'Payment is processed securely before your booking is confirmed.',
             textAlign: TextAlign.center,
             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
@@ -1309,7 +1368,7 @@ class _PriceRow extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// STEP 5 – Payment placeholder
+// STEP 5 – Confirmation
 // ════════════════════════════════════════════════════════════════════════════════
 
 class _StepPayment extends ConsumerWidget {
@@ -1331,7 +1390,6 @@ class _StepPayment extends ConsumerWidget {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Success banner
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -1351,7 +1409,13 @@ class _StepPayment extends ConsumerWidget {
                         color: const Color(0xFF065F46))),
                 const SizedBox(height: 6),
                 Text(
-                  'Your booking ID: ${booking.id}',
+                  'Payment received and booking created successfully.',
+                  textAlign: TextAlign.center,
+                  style: tt.bodyMedium?.copyWith(color: cs.onSurface),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Booking ID: ${booking.id}',
                   style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
                 const SizedBox(height: 4),
@@ -1360,23 +1424,28 @@ class _StepPayment extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 28),
-
-          // Payment methods (placeholder)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Choose Payment Method',
-                style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          _ConfirmSection(
+            title: 'Schedule',
+            icon: Icons.event_rounded,
+            content:
+                '${_StepConfirm._fmtDate(booking.date)}\n${booking.slot.label}',
           ),
-          const SizedBox(height: 12),
-          ..._paymentMethods.map(
-            (m) => _PaymentMethodTile(
-              icon: m.$1,
-              label: m.$2,
-              subtitle: m.$3,
-              isCod: m.$4,
-              booking: booking,
-              ref: ref,
-            ),
+          const SizedBox(height: 10),
+          _ConfirmSection(
+            title: booking.location.isOnline ? 'Mode' : 'Location',
+            icon: booking.location.isOnline
+                ? Icons.videocam_rounded
+                : Icons.location_on_rounded,
+            content: booking.location.isOnline
+                ? 'Online session. Meeting details will be shared by the team.'
+                : booking.location.displayAddress,
+          ),
+          const SizedBox(height: 10),
+          _ConfirmSection(
+            title: 'Payment',
+            icon: Icons.verified_rounded,
+            content:
+                '₹${booking.amount.toStringAsFixed(0)} paid via Razorpay\nPayment ID: ${booking.paymentId ?? 'Not available'}',
           ),
           const SizedBox(height: 24),
           FilledButton.icon(
@@ -1390,21 +1459,22 @@ class _StepPayment extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(14)),
             ),
           ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () =>
+                ref.read(bookingWizardProvider(pre).notifier).reset(),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Book Another Pooja'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
         ],
       ),
     );
   }
-
-  static const _paymentMethods = [
-    (Icons.account_balance_wallet_rounded, 'UPI',
-        'PhonePe, GPay, Paytm & more', false),
-    (Icons.credit_card_rounded, 'Credit / Debit Card',
-        'Visa, MasterCard, RuPay', false),
-    (Icons.account_balance_rounded, 'Net Banking',
-        'All major Indian banks', false),
-    (Icons.money_rounded, 'Cash on Service',
-        'Pay to pandit after service', true),
-  ];
 }
 
 class _StatusBadge extends StatelessWidget {
@@ -1436,85 +1506,3 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-class _PaymentMethodTile extends ConsumerWidget {
-  const _PaymentMethodTile({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.isCod,
-    required this.booking,
-    required this.ref,
-  });
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final bool isCod;
-  final BookingModel booking;
-  final WidgetRef ref;
-
-  Future<void> _handleTap(BuildContext context) async {
-    if (isCod) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cash on Service selected. Pay after the puja.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    final amountPaise = (booking.amount * 100).round();
-    final currentUser = ref.read(currentUserProvider);
-    final request = PaymentRequest(
-      orderId: booking.id,
-      amountPaise: amountPaise,
-      description: 'Booking: ${booking.id}',
-      customerName: currentUser?.name ?? 'Devotee',
-      customerEmail: currentUser?.email ?? '',
-      customerPhone: currentUser?.phone ?? '',
-    );
-    final result = await ref.read(paymentProvider.notifier).pay(request);
-    if (!context.mounted) return;
-    if (result.isSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Payment successful! Your booking is confirmed.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } else if (result.status != PaymentStatus.cancelled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.errorMessage ?? 'Payment failed'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 0,
-      color: cs.surfaceContainerHighest,
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: cs.primaryContainer,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: cs.onPrimaryContainer),
-        ),
-        title: Text(label,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
-        onTap: () => _handleTap(context),
-      ),
-    );
-  }
-}

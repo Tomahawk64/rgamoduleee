@@ -6,6 +6,8 @@ import '../../auth/providers/auth_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/role_enum.dart';
+import '../../payment/payment_provider.dart';
+import '../../payment/payment_service.dart';
 import '../models/scheduled_consultation_request.dart';
 import '../providers/consultation_provider.dart';
 
@@ -24,12 +26,20 @@ class ConsultationRequestsScreen extends ConsumerWidget {
         ? ref.watch(panditScheduledConsultationsProvider(user.id))
         : ref.watch(userScheduledConsultationsProvider(user.id));
 
+    ref.listen(consultationRealtimeTickProvider, (_, __) {
+      if (isPandit) {
+        ref.invalidate(panditScheduledConsultationsProvider(user.id));
+      } else {
+        ref.invalidate(userScheduledConsultationsProvider(user.id));
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(isPandit
-            ? 'Consultation Requests'
-            : 'My Consultations'),
+            ? 'Astrology Requests'
+            : 'My Astrology Sessions'),
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -37,7 +47,7 @@ class ConsultationRequestsScreen extends ConsumerWidget {
         data: (list) {
           if (list.isEmpty) {
             return const Center(
-              child: Text('No consultation requests yet.'),
+              child: Text('No astrology requests yet.'),
             );
           }
 
@@ -161,6 +171,18 @@ class _RequestCard extends ConsumerWidget {
               ],
             ),
           if (!isPandit &&
+              request.status == ConsultationRequestStatus.pending &&
+              DateTime.now().difference(request.createdAt) >
+                  const Duration(minutes: 10))
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _FindOtherPanditsButton(
+                request: request,
+                helperText:
+                    'This request looks delayed. Explore other online pandits now.',
+              ),
+            ),
+          if (!isPandit &&
               request.status == ConsultationRequestStatus.rescheduleProposed)
             Wrap(
               spacing: 8,
@@ -188,9 +210,42 @@ class _RequestCard extends ConsumerWidget {
                 ),
               ],
             ),
-          // Start Chat for confirmed consultations (both pandit & user)
-          if (request.status == ConsultationRequestStatus.confirmed)
-            _StartChatButton(request: request, onActionDone: onActionDone),
+          if (!isPandit && request.status == ConsultationRequestStatus.confirmed)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: request.isPaid
+                  ? _StartChatButton(
+                      request: request,
+                      onActionDone: onActionDone,
+                    )
+                  : _PayAndUnlockChatButton(
+                      request: request,
+                      onActionDone: onActionDone,
+                    ),
+            ),
+          if (isPandit && request.status == ConsultationRequestStatus.confirmed)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: request.isPaid
+                  ? _StartChatButton(
+                      request: request,
+                      onActionDone: onActionDone,
+                    )
+                  : const Text(
+                      'Waiting for user payment to unlock Chat Now.',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+            ),
+          if (!isPandit &&
+              (request.status == ConsultationRequestStatus.rejected ||
+                  request.status == ConsultationRequestStatus.expired))
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _FindOtherPanditsButton(request: request),
+            ),
         ],
       ),
     );
@@ -356,7 +411,7 @@ class _StartChatButtonState extends ConsumerState<_StartChatButton> {
                     strokeWidth: 2, color: Colors.white),
               )
             : const Icon(Icons.chat_rounded, size: 18),
-        label: const Text('Start Chat'),
+        label: const Text('Chat Now'),
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
@@ -365,6 +420,144 @@ class _StartChatButtonState extends ConsumerState<_StartChatButton> {
               borderRadius: BorderRadius.circular(12)),
         ),
       ),
+    );
+  }
+}
+
+class _PayAndUnlockChatButton extends ConsumerStatefulWidget {
+  const _PayAndUnlockChatButton({
+    required this.request,
+    required this.onActionDone,
+  });
+
+  final ScheduledConsultationRequest request;
+  final VoidCallback onActionDone;
+
+  @override
+  ConsumerState<_PayAndUnlockChatButton> createState() =>
+      _PayAndUnlockChatButtonState();
+}
+
+class _PayAndUnlockChatButtonState
+    extends ConsumerState<_PayAndUnlockChatButton> {
+  bool _paying = false;
+
+  Future<void> _payAndUnlock() async {
+    if (_paying) return;
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      if (mounted) context.go(Routes.login);
+      return;
+    }
+
+    setState(() => _paying = true);
+    try {
+      final payment = await ref.read(paymentProvider.notifier).pay(
+            PaymentRequest(
+              orderId: 'CONS-${widget.request.id}-${DateTime.now().millisecondsSinceEpoch}',
+              amountPaise: widget.request.amountPaise,
+              description:
+                  'Consultation payment with ${widget.request.panditName}',
+              customerName: user.name,
+              customerEmail: user.email,
+              customerPhone: user.phone ?? '',
+              metadata: {
+                'mode': 'scheduled_consultation_unlock',
+                'consultation_id': widget.request.id,
+                'pandit_id': widget.request.panditId,
+              },
+            ),
+          );
+      if (!payment.isSuccess) return;
+
+      final resolvedPaymentId =
+          payment.providerPaymentId ?? payment.transactionId;
+      if (resolvedPaymentId == null || resolvedPaymentId.isEmpty) {
+        throw StateError('Payment succeeded but payment ID was missing.');
+      }
+
+      await ref.read(sessionRepositoryProvider).markConsultationPaid(
+            sessionId: widget.request.id,
+        paymentId: resolvedPaymentId,
+          );
+
+      widget.onActionDone();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payment successful. Chat Now unlocked.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment failed: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: _paying ? null : _payAndUnlock,
+        icon: _paying
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.lock_open_rounded, size: 18),
+        label: Text('Pay ${widget.request.amountLabel} & Unlock Chat Now'),
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+}
+
+class _FindOtherPanditsButton extends StatelessWidget {
+  const _FindOtherPanditsButton({
+    required this.request,
+    this.helperText,
+  });
+
+  final ScheduledConsultationRequest request;
+  final String? helperText;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (helperText != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              helperText!,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => context.go(Routes.consultation),
+            icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+            label: const Text('Suggest Other Online Pandits'),
+          ),
+        ),
+      ],
     );
   }
 }

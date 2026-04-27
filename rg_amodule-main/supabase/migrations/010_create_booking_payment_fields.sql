@@ -7,6 +7,23 @@
 -- - Allow paid-at-checkout flows (e.g., online special pooja) to persist
 --   `is_paid` and `payment_id` atomically at insert time.
 
+DROP FUNCTION IF EXISTS public.create_booking(
+  uuid,
+  uuid,
+  text,
+  text,
+  date,
+  text,
+  jsonb,
+  jsonb,
+  uuid,
+  numeric,
+  text,
+  boolean,
+  boolean,
+  text
+);
+
 CREATE OR REPLACE FUNCTION public.create_booking(
   p_package_id       uuid,
   p_special_pooja_id uuid,

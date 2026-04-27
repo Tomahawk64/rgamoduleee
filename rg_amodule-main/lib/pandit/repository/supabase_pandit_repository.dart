@@ -64,6 +64,7 @@ class SupabasePanditDashboardRepository
         rating: 0.0,
         totalBookings: 0,
         consultationEnabled: false,
+        offlineBookingEnabled: false,
         yearsExperience: 0,
         languages: const ['Hindi'],
       );
@@ -85,10 +86,12 @@ class SupabasePanditDashboardRepository
       rating: (profileRow?['rating'] as num?)?.toDouble() ?? 0.0,
       totalBookings: 0,
       consultationEnabled: detailsRow?['consultation_enabled'] as bool? ?? false,
+      offlineBookingEnabled: detailsRow?['offline_booking_enabled'] as bool? ?? false,
       yearsExperience: (detailsRow?['experience_years'] as num?)?.toInt() ?? 0,
       languages: languages,
       bio: detailsRow?['bio'] as String?,
       avatarUrl: profileRow?['avatar_url'] as String?,
+      isOnline: detailsRow?['is_online'] as bool? ?? false,
     );
   }
 
@@ -104,6 +107,29 @@ class SupabasePanditDashboardRepository
     await _db.rpc('pandit_set_consultation_enabled', params: {
       'p_enabled': enabled,
     });
+  }
+  // Toggle online status ───────────────────────────────────────────────────
+
+  @override
+  Future<void> setOnlineStatus(
+    String panditId, {
+    required bool isOnline,
+  }) async {
+    await _db
+        .from('pandit_details')
+        .update({'is_online': isOnline})
+        .eq('id', panditId);
+  }
+
+  @override
+  Future<void> setOfflineBookingEnabled(
+    String panditId, {
+    required bool enabled,
+  }) async {
+    await _db
+        .from('pandit_details')
+        .update({'offline_booking_enabled': enabled})
+        .eq('id', panditId);
   }
 
   // ── Update avatar URL ────────────────────────────────────────────────────

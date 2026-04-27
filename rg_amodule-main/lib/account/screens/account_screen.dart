@@ -240,8 +240,13 @@ class _UserAccountView extends ConsumerWidget {
                           onTap: () => context.push(Routes.myBookings),
                     ),
                     _MenuItem(
+                      icon: Icons.temple_hindu_rounded,
+                      label: 'Offline Pandit Bookings',
+                      onTap: () => context.push(Routes.offlineBookings),
+                    ),
+                    _MenuItem(
                       icon: Icons.chat_bubble,
-                      label: 'My Consultations',
+                      label: 'My Astrology Sessions',
                       onTap: () => context.push(Routes.consultationRequests),
                     ),
                     _MenuItem(
@@ -272,8 +277,7 @@ class _UserAccountView extends ConsumerWidget {
                     _MenuItem(
                       icon: Icons.help_outline,
                       label: 'Help & FAQ',
-                      onTap: () =>
-                          _showComingSoonSnackbar(context, 'Help & FAQ'),
+                      onTap: () => context.push(Routes.help),
                     ),
                     _MenuItem(
                       icon: Icons.privacy_tip_outlined,
@@ -364,7 +368,7 @@ class _PanditAccountView extends ConsumerWidget {
                     ),
                     _MenuItem(
                       icon: Icons.chat_bubble_outline,
-                      label: 'Consultation Sessions',
+                      label: 'Astrology Sessions',
                       onTap: () => context.push(Routes.consultationRequests),
                     ),
                     _MenuItem(
@@ -391,6 +395,16 @@ class _PanditAccountView extends ConsumerWidget {
                         context,
                         'Availability / Online Status',
                       ),
+                    ),
+                  ],
+                ),
+                _MenuSection(
+                  title: 'Support',
+                  items: [
+                    _MenuItem(
+                      icon: Icons.support_agent_outlined,
+                      label: 'Raise Help Ticket',
+                      onTap: () => context.push(Routes.help),
                     ),
                   ],
                 ),

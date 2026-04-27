@@ -5,8 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
-import '../../payment/payment_provider.dart';
-import '../../payment/payment_service.dart';
 import '../models/pandit_model.dart';
 import '../providers/consultation_provider.dart';
 
@@ -98,7 +96,7 @@ class _ConsultantProfileScreenState
                           ),
                         ),
                         const Text(
-                          'Live consultation duration is fixed to 10 minutes.',
+                          'Astrology session duration is fixed to 10 minutes.',
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 12,
@@ -169,9 +167,9 @@ class _ConsultantProfileScreenState
           OutlinedButton.icon(
             onPressed: _processing
                 ? null
-                : () => _payAndSchedule(context, pandit),
+                : () => _requestSchedule(context, pandit),
             icon: const Icon(Icons.event_available_rounded),
-            label: Text('Pay ${selectedRate.priceLabel} & Schedule'),
+            label: const Text('Send Consultation Request'),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 52),
             ),
@@ -209,7 +207,7 @@ class _ConsultantProfileScreenState
     });
   }
 
-  Future<void> _payAndSchedule(BuildContext context, PanditModel pandit) async {
+  Future<void> _requestSchedule(BuildContext context, PanditModel pandit) async {
     final user = ref.read(currentUserProvider);
     final rate = _live10MinuteRate(pandit);
     if (user == null) {
@@ -226,40 +224,22 @@ class _ConsultantProfileScreenState
     final repo = ref.read(sessionRepositoryProvider);
 
     setState(() => _processing = true);
-    final orderId = 'cons_sched_${DateTime.now().millisecondsSinceEpoch}';
     try {
-      final payment = await ref.read(paymentProvider.notifier).pay(
-            PaymentRequest(
-              orderId: orderId,
-              amountPaise: rate.totalPaise,
-              description: 'Scheduled consultation with ${pandit.name}',
-              customerName: user.name,
-              customerEmail: user.email,
-              customerPhone: user.phone ?? '',
-              metadata: {
-                'mode': 'scheduled_consultation',
-                'pandit_id': pandit.id,
-                'scheduled_for': _scheduledDateTime!.toIso8601String(),
-              },
-            ),
-          );
-      if (!payment.isSuccess) return;
-
       await repo.requestScheduledSession(
             pandit: pandit,
             rate: rate,
             userId: user.id,
             userName: user.name,
             scheduledFor: _scheduledDateTime!,
-            isPaid: true,
-            paymentId: payment.providerPaymentId ?? payment.transactionId,
+            isPaid: false,
+            paymentId: null,
             customerNote: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
           );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Consultation request sent. Track it in My Consultations.'),
+          content: Text('Request sent. Pay after pandit accepts to unlock Chat Now.'),
         ),
       );
       context.go(Routes.consultationRequests);

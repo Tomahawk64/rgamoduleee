@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/role_enum.dart';
+import '../../payment/payment_provider.dart';
+import '../../payment/payment_service.dart';
 import '../controllers/consultation_controller.dart';
 import '../models/consultation_session.dart';
 import '../providers/consultation_provider.dart';
@@ -1052,9 +1054,61 @@ class _ExpiredOverlay extends StatelessWidget {
 
 // ── Extend Session Bottom Sheet ───────────────────────────────────────────────
 
-class _ExtendSessionSheet extends StatelessWidget {
+class _ExtendSessionSheet extends ConsumerStatefulWidget {
   const _ExtendSessionSheet({required this.ctrl});
   final SessionController ctrl;
+
+  @override
+  ConsumerState<_ExtendSessionSheet> createState() =>
+      _ExtendSessionSheetState();
+}
+
+class _ExtendSessionSheetState extends ConsumerState<_ExtendSessionSheet> {
+  bool _processing = false;
+
+  Future<void> _payAndExtend() async {
+    if (_processing) return;
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+
+    setState(() => _processing = true);
+    try {
+      final sessionId = widget.ctrl.sessionId;
+      final payment = await ref.read(paymentProvider.notifier).pay(
+            PaymentRequest(
+              orderId: 'CONS-EXT-$sessionId-${DateTime.now().millisecondsSinceEpoch}',
+              amountPaise: 9900,
+              description: 'Consultation extension (+10 min)',
+              customerName: user.name,
+              customerEmail: user.email,
+              customerPhone: user.phone ?? '',
+              metadata: {
+                'mode': 'consultation_extension',
+                'consultation_id': sessionId,
+                'add_minutes': '10',
+              },
+            ),
+          );
+      if (!payment.isSuccess) return;
+
+      await widget.ctrl.requestExtension(addMinutes: 10);
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session extended by 10 minutes.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not extend session: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1141,7 +1195,7 @@ class _ExtendSessionSheet extends StatelessWidget {
                     size: 13, color: AppColors.textHint),
                 SizedBox(width: 4),
                 Text(
-                  'Payment gateway integration pending.',
+                  'Extension time is added only after successful payment.',
                   style: TextStyle(
                       fontSize: 11.5,
                       color: AppColors.textHint),
@@ -1156,18 +1210,24 @@ class _ExtendSessionSheet extends StatelessWidget {
               width: double.infinity,
               height: 50,
               child: FilledButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ctrl.requestExtension(addMinutes: 10);
-                },
+                onPressed: _processing ? null : _payAndExtend,
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                child: const Text('Extend for ₹99',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15)),
+                child: _processing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Pay ₹99 & Extend',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ),
           ),

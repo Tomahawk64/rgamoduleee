@@ -13,10 +13,15 @@ class ConsultationScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(consultationRealtimeTickProvider, (_, __) {
+      ref.read(panditsProvider.notifier).refresh();
+    });
+
     final panditsState = ref.watch(panditsProvider);
+    final onlinePandits = panditsState.pandits.where((p) => p.isOnline).toList();
 
     return BaseScaffold(
-      title: 'Live Consultation',
+      title: 'Astrology',
       showBackButton: true,
       body: RefreshIndicator(
         onRefresh: () => ref.read(panditsProvider.notifier).refresh(),
@@ -29,7 +34,7 @@ class ConsultationScreen extends ConsumerWidget {
               title: 'Available Consultants',
               subtitle: panditsState.loading
                   ? 'Loading...'
-                  : '${panditsState.pandits.where((p) => p.isOnline).length} online now',
+              : '${onlinePandits.length} online now',
             ),
             const SizedBox(height: 12),
             if (panditsState.loading)
@@ -40,7 +45,7 @@ class ConsultationScreen extends ConsumerWidget {
                 onRetry: () => ref.read(panditsProvider.notifier).refresh(),
               )
             else ...[
-              ...panditsState.pandits.map(
+              ...onlinePandits.map(
                 (p) => _PanditCard(
                   pandit: p,
                   onConnect: () => context.push(

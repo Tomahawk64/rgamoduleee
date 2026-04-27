@@ -403,6 +403,22 @@ class WsSessionRepository implements ISessionRepository {
     );
   }
 
+  @override
+  Future<void> markConsultationPaid({
+    required String sessionId,
+    required String paymentId,
+  }) async {
+    final result = await _client.rpc('mark_consultation_paid', params: {
+      'p_session_id': sessionId,
+      'p_payment_id': paymentId,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+  }
+
   // ── startScheduledSession ────────────────────────────────────────────────
 
   @override
@@ -449,7 +465,7 @@ class WsSessionRepository implements ISessionRepository {
       userId: request.panditId,
       type: AppNotificationType.consultationConfirmed,
       title: 'Consultation started',
-      body: 'Your consultation with ${request.userName} is now live!',
+      body: 'Your consultation with $currentUserName is now live!',
       entityType: 'consultation',
       entityId: request.id,
     );
@@ -466,12 +482,122 @@ class WsSessionRepository implements ISessionRepository {
     );
   }
 
+  // ── Live Chat Methods ─────────────────────────────────────────────────────
+
+  @override
+  Future<ConsultationSession> requestLiveChat({
+    required PanditModel pandit,
+    required ConsultationRate rate,
+    required String userId,
+    required String userName,
+    bool isPaid = true,
+    String? paymentId,
+    String? customerNote,
+  }) async {
+    final result = await _client.rpc('request_live_chat', params: {
+      'p_pandit_id': pandit.id,
+      'p_duration_minutes': rate.duration,
+      'p_price': rate.totalPaise / 100.0,
+      'p_is_paid': isPaid,
+      'p_payment_id': paymentId,
+      'p_customer_note': customerNote,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+
+    final sessionId = data['session_id'] as String;
+    final startedAt = DateTime.now();
+
+    return ConsultationSession(
+      id: sessionId,
+      pandit: pandit,
+      userId: userId,
+      userName: userName,
+      rate: rate,
+      totalSeconds: rate.duration * 60,
+      status: SessionStatus.connecting,
+      startedAt: startedAt,
+    );
+  }
+
+  @override
+  Future<void> joinLiveChat(String sessionId) async {
+    final result = await _client.rpc('join_live_chat', params: {
+      'p_session_id': sessionId,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+  }
+
+  @override
+  Future<List<ScheduledConsultationRequest>> getPendingLiveChats(
+      String panditId) async {
+    final result = await _client.rpc('get_pending_live_chats');
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+
+    final requestsData = data['requests'] as List?;
+    if (requestsData == null) return [];
+
+    return requestsData
+        .cast<Map<String, dynamic>>()
+        .map((r) => ScheduledConsultationRequest(
+              id: r['session_id'] as String,
+              userId: r['user_id'] as String,
+              userName: r['user_name'] as String? ?? 'User',
+              panditId: panditId,
+              panditName: '', // Will be filled by caller
+              durationMinutes: r['duration_minutes'] as int,
+              amountPaise: ((r['price'] as num?)?.toDouble() ?? 0.0 * 100).toInt(),
+              scheduledFor: DateTime.now(),
+              status: _mapStatus(r['status'] as String? ?? 'pending'),
+              customerNote: r['customer_note'] as String?,
+              panditNote: null,
+              isPaid: true,
+              paymentId: null,
+              createdAt: DateTime.tryParse(r['requested_at'] as String? ?? '') ??
+                  DateTime.now(),
+            ))
+        .toList();
+  }
+
+  @override
+  Future<void> respondLiveChatRequest({
+    required String sessionId,
+    required String action,
+  }) async {
+    final result = await _client.rpc('respond_live_chat_request', params: {
+      'p_session_id': sessionId,
+      'p_action': action,
+    });
+
+    final data = result as Map<String, dynamic>;
+    if (data['error'] != null) {
+      throw StateError(data['error'] as String);
+    }
+  }
+
+  ConsultationRequestStatus _mapStatus(String status) {
+    return ConsultationRequestStatusX.fromDb(status);
+  }
+
   // ── connect ─────────────────────────────────────────────────────────────
 
   @override
   Stream<SessionEvent> connect(ConsultationSession session) {
     final ctrl = StreamController<SessionEvent>.broadcast();
     _controllers[session.id] = ctrl;
+
+    _emitHistory(session.id, ctrl);
 
     final initialSeconds = _calcRemaining(session);
     _remainingSeconds[session.id] = initialSeconds;
@@ -586,6 +712,7 @@ class WsSessionRepository implements ISessionRepository {
           ctrl.add(SessionStartedEvent(sessionId: session.id));
           _startLocalTimer(session.id, ctrl);
         } else {
+          _notifyCounterpartyToJoin(session.id);
           // Only this party is in — wait for the Realtime UPDATE to detect
           // the other party's join (handled in the consultations UPDATE callback).
           ctrl.add(const WaitingForPartnerEvent());
@@ -854,6 +981,58 @@ class WsSessionRepository implements ISessionRepository {
     return _scheduledFromRow(row);
   }
 
+  Future<void> _emitHistory(
+    String sessionId,
+    StreamController<SessionEvent> ctrl,
+  ) async {
+    try {
+      final rows = await _client
+          .from('messages')
+          .select('''
+            id,consultation_id,sender_id,content,image_url,created_at,
+            profiles!messages_sender_id_fkey(full_name,role)
+          ''')
+          .eq('consultation_id', sessionId)
+          .order('created_at', ascending: true)
+          .range(0, 199);
+
+      for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+        if (ctrl.isClosed) return;
+        ctrl.add(PanditMessageEvent(message: _messageFromRow(row)));
+      }
+    } catch (_) {
+      // Keep connect resilient even if history fetch fails.
+    }
+  }
+
+  Future<void> _notifyCounterpartyToJoin(String sessionId) async {
+    try {
+      final uid = _client.auth.currentUser?.id;
+      if (uid == null) return;
+      final row = await _client
+          .from('consultations')
+          .select('id,user_id,pandit_id')
+          .eq('id', sessionId)
+          .single();
+
+      final userId = row['user_id'] as String?;
+      final panditId = row['pandit_id'] as String?;
+      if (userId == null || panditId == null) return;
+
+      final targetId = uid == userId ? panditId : userId;
+      await _createNotification(
+        userId: targetId,
+        type: AppNotificationType.consultationConfirmed,
+        title: 'Partner joined chat room',
+        body: 'Your consultation room is ready. Tap Chat Now to join.',
+        entityType: 'consultation',
+        entityId: sessionId,
+      );
+    } catch (_) {
+      // Best-effort notification; do not block chat connect flow.
+    }
+  }
+
   Future<void> _createNotification({
     required String userId,
     required AppNotificationType type,
@@ -926,6 +1105,7 @@ class SupabasePanditRepository implements IPanditRepository {
       final rows = await _client
           .from('pandit_details')
           .select(_kSelect)
+          .eq('is_online', true)
           .eq('consultation_enabled', true)
           .order('experience_years', ascending: false);
 
@@ -967,6 +1147,18 @@ class SupabasePanditRepository implements IPanditRepository {
     } on PostgrestException catch (e) {
       throw Exception('Failed to fetch pandits: ${e.message}');
     }
+  }
+
+  @override
+  Future<List<PanditModel>> fetchAlternativeOnlinePandits({
+    required String excludePanditId,
+    int limit = 3,
+  }) async {
+    final pandits = await fetchOnlinePandits();
+    return pandits
+        .where((p) => p.id != excludePanditId)
+        .take(limit)
+        .toList();
   }
 
   @override

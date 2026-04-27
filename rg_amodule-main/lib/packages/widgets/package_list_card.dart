@@ -252,37 +252,3 @@ class _DiscountBadge extends StatelessWidget {
     );
   }
 }
-
-class _ModeChip extends StatelessWidget {
-  const _ModeChip({required this.mode});
-  final PackageMode mode;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, icon, bg) = switch (mode) {
-      PackageMode.online  => ('Online',    Icons.videocam_rounded,   const Color(0xFF1B5E20)),
-      PackageMode.offline => ('On-site',   Icons.home_rounded,       const Color(0xFF2D4A8A)),
-      PackageMode.both    => ('Online & On-site', Icons.swap_horiz_rounded, const Color(0xFF4A148C)),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg.withAlpha(200),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: Colors.white),
-          const SizedBox(width: 3),
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
-}

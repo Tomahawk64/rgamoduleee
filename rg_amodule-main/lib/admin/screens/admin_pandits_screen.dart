@@ -87,7 +87,7 @@ class _AdminPanditsScreenState
                 const SizedBox(width: 8),
                 _PillChip(
                     label:
-                        '${state.pandits.where((p) => p.consultationEnabled).length} Consultation On',
+                        '${state.pandits.where((p) => p.consultationEnabled).length} Astrology On',
                     color: AppColors.info),
               ],
             ),
@@ -317,7 +317,7 @@ class _PanditCard extends StatelessWidget {
               const SizedBox(width: 6),
               const Expanded(
                 child: Text(
-                  'Online Consultations',
+                  'Online Astrology',
                   style: TextStyle(fontSize: 12),
                 ),
               ),
@@ -414,7 +414,7 @@ class _PricingSheetState extends State<_PricingSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    'Consultation Pricing\n${widget.pandit.name}',
+                    'Astrology Pricing\n${widget.pandit.name}',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -429,7 +429,7 @@ class _PricingSheetState extends State<_PricingSheet> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Configure consultation rate tiers for this pandit.',
+              'Configure astrology rate tiers for this pandit.',
               style: TextStyle(
                   fontSize: 12, color: AppColors.textSecondary),
             ),

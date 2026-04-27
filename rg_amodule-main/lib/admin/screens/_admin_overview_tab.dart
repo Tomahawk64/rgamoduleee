@@ -7,6 +7,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../booking/models/booking_status.dart';
@@ -15,6 +16,7 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../models/admin_models.dart';
 import '../providers/admin_package_catalog_provider.dart';
+import 'admin_offline_bookings_screen.dart';
 
 class AdminOverviewTab extends StatelessWidget {
   const AdminOverviewTab({
@@ -303,12 +305,20 @@ class _LegendDot extends StatelessWidget {
 // KPI GRID — gradient cards
 // ═══════════════════════════════════════════════════════════════════
 
-class _KpiGrid extends StatelessWidget {
+class _KpiGrid extends ConsumerWidget {
   const _KpiGrid({required this.report});
   final AdminReport report;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Load offline bookings if not already loaded
+    final offlineState = ref.watch(adminOfflineBookingsProvider);
+    if (offlineState.bookings.isEmpty && !offlineState.loading) {
+      Future.microtask(
+          () => ref.read(adminOfflineBookingsProvider.notifier).loadAll());
+    }
+    final offlineCtrl = ref.read(adminOfflineBookingsProvider.notifier);
+
     final items = [
       _KpiData(
         value: '${report.totalBookings}',
@@ -322,7 +332,7 @@ class _KpiGrid extends StatelessWidget {
       ),
       _KpiData(
         value: '${report.totalConsultations}',
-        label: 'Consultations',
+        label: 'Astrology Sessions',
         sub: '+${report.monthlyConsultations} this month',
         icon: Icons.videocam_rounded,
         gradient: const LinearGradient(
@@ -333,7 +343,9 @@ class _KpiGrid extends StatelessWidget {
       _KpiData(
         value: report.formattedTotalRevenue,
         label: 'Total Revenue',
-        sub: '${report.formattedMonthlyRevenue}/month',
+        sub: offlineCtrl.refundedCount > 0
+            ? '${report.formattedMonthlyRevenue}/mo • ${offlineCtrl.refundedCount} refunds'
+            : '${report.formattedMonthlyRevenue}/month',
         icon: Icons.currency_rupee_rounded,
         gradient: const LinearGradient(
             colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
@@ -360,6 +372,18 @@ class _KpiGrid extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight),
       ),
+      _KpiData(
+        value: '${offlineCtrl.totalBookings}',
+        label: 'Offline Bookings',
+        sub: offlineCtrl.refundedCount > 0
+            ? '${offlineCtrl.activeBookings} active • ${offlineCtrl.refundedCount} refunded'
+            : '${offlineCtrl.activeBookings} active',
+        icon: Icons.location_on_rounded,
+        gradient: const LinearGradient(
+            colors: [Color(0xFF795548), Color(0xFF8D6E63)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
+      ),
     ];
 
     return Column(
@@ -376,7 +400,11 @@ class _KpiGrid extends StatelessWidget {
           Expanded(child: _KpiCard(data: items[3])),
         ]),
         const SizedBox(height: 10),
-        _KpiCard(data: items[4], wide: true),
+        Row(children: [
+          Expanded(child: _KpiCard(data: items[4])),
+          const SizedBox(width: 10),
+          Expanded(child: _KpiCard(data: items[5])),
+        ]),
       ],
     );
   }
@@ -395,9 +423,8 @@ class _KpiData {
 }
 
 class _KpiCard extends StatelessWidget {
-  const _KpiCard({required this.data, this.wide = false});
+  const _KpiCard({required this.data});
   final _KpiData data;
-  final bool wide;
 
   @override
   Widget build(BuildContext context) {
@@ -414,37 +441,7 @@ class _KpiCard extends StatelessWidget {
           ),
         ],
       ),
-      child: wide
-          ? Row(children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(data.icon, size: 22, color: Colors.white),
-              ),
-              const SizedBox(width: 14),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(data.value,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 26,
-                        color: Colors.white,
-                        height: 1.0)),
-                Text(data.label,
-                    style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w500)),
-                Text(data.sub,
-                    style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white54)),
-              ]),
-            ])
-          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -567,7 +564,7 @@ class _RevenueAreaChartState extends State<_RevenueAreaChart>
           ),
           AnimatedBuilder(
             animation: _anim,
-            builder: (_, __) => SizedBox(
+            builder: (_, _) => SizedBox(
               height: 100,
               child: CustomPaint(
                 painter: _AreaChartPainter(
@@ -744,7 +741,7 @@ class _BookingInsightRowState extends State<_BookingInsightRow>
             child: Column(children: [
               AnimatedBuilder(
                 animation: _anim,
-                builder: (_, __) => SizedBox(
+                builder: (_, _) => SizedBox(
                   width: 120,
                   height: 120,
                   child: CustomPaint(
@@ -903,7 +900,7 @@ class _QuickActionGrid extends StatelessWidget {
           Icons.auto_awesome_rounded, const Color(0xFF6A1B9A),
           Routes.adminPoojas),
       _ActionConfig(
-          'Consults',
+          'Astrology',
           activeSessions > 0
               ? '$activeSessions live'
               : '${state.consultations.length} total',
@@ -916,6 +913,9 @@ class _QuickActionGrid extends StatelessWidget {
           Routes.adminProducts),
       _ActionConfig('Users', '${state.users.length} accounts',
           Icons.people_rounded, const Color(0xFF00695C), Routes.adminUsers),
+      _ActionConfig('Offline', 'Pandit bookings',
+          Icons.location_on_rounded, const Color(0xFF795548),
+          Routes.adminOfflineBookings),
       _ActionConfig('Reports', 'Analytics', Icons.bar_chart_rounded,
           const Color(0xFF6D4C41), Routes.adminReports),
     ];
@@ -1206,7 +1206,7 @@ class _PanditActivityChartState extends State<_PanditActivityChart>
       ),
       child: AnimatedBuilder(
         animation: _anim,
-        builder: (_, __) => Column(
+        builder: (_, _) => Column(
           children: widget.pandits.asMap().entries.map((e) {
             final i = e.key;
             final p = e.value;

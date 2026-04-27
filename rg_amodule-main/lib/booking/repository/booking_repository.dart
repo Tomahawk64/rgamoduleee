@@ -113,6 +113,8 @@ abstract class IBookingRepository {
   Future<BookingModel> createBooking({
     required BookingDraft draft,
     required String userId,
+    bool isPaid = false,
+    String? paymentId,
   });
 
   /// Creates an online special-pooja booking, marks it paid, and stores the
@@ -144,10 +146,7 @@ class SupabaseBookingRepository implements IBookingRepository {
 
   final SupabaseClient _client;
 
-  static const _bookingSelect = '''
-    *,
-    pandit:profiles!bookings_pandit_id_fkey(full_name, avatar_url)
-  ''';
+  static const _bookingSelect = '*';
 
   @override
   Future<List<BookingModel>> getBookingsForUser(
@@ -220,6 +219,8 @@ class SupabaseBookingRepository implements IBookingRepository {
   Future<BookingModel> createBooking({
     required BookingDraft draft,
     required String userId,
+    bool isPaid = false,
+    String? paymentId,
   }) async {
     if (!draft.readyToConfirm) {
       throw const BookingException('Incomplete booking draft.');
@@ -255,7 +256,8 @@ class SupabaseBookingRepository implements IBookingRepository {
         'p_amount':           pkg.effectivePrice,
         'p_notes':            draft.notes ?? '',
         'p_is_auto_assign':   draft.isAutoAssign,
-        'p_is_paid':          false,
+        'p_is_paid':          isPaid,
+        'p_payment_id':       paymentId,
       });
 
       final data = result as Map<String, dynamic>;
@@ -627,6 +629,8 @@ class MockBookingRepository implements IBookingRepository {
   Future<BookingModel> createBooking({
     required BookingDraft draft,
     required String userId,
+    bool isPaid = false,
+    String? paymentId,
   }) async {
     if (!draft.readyToConfirm) {
       throw const BookingException('Incomplete booking draft.');
@@ -663,6 +667,8 @@ class MockBookingRepository implements IBookingRepository {
       panditId:       pandit?.id,
       panditName:     pandit?.name,
       panditAvatarUrl: pandit?.imageUrl,
+      isPaid:         isPaid,
+      paymentId:      paymentId,
       isAutoAssigned: draft.isAutoAssign,
     );
 

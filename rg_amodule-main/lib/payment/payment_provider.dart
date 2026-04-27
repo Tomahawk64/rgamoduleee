@@ -2,16 +2,21 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/providers/supabase_provider.dart';
 import 'payment_service.dart';
+import 'services/razorpay_payment_service_v2.dart';
 
 // ── Service provider ──────────────────────────────────────────────────────────
-// Uses RazorpayPaymentService on Android/iOS, mock on web (Razorpay SDK
-// is mobile-only).
+// Uses RazorpayPaymentServiceV2 on Android/iOS with server-side verification,
+// mock on web (Razorpay SDK is mobile-only).
 
 final paymentServiceProvider = Provider<IPaymentService>(
-  (ref) => (kIsWeb || !RazorpayPaymentService.isConfigured)
+  (ref) => (kIsWeb || !RazorpayPaymentServiceV2.isConfigured)
       ? MockPaymentService()
-      : RazorpayPaymentService(),
+      : RazorpayPaymentServiceV2(
+          supabase: ref.watch(supabaseClientProvider),
+        ),
 );
 
 // ── Payment state ─────────────────────────────────────────────────────────────

@@ -266,7 +266,18 @@ ALTER TABLE public.consultations ADD COLUMN IF NOT EXISTS payment_id  text;
 
 ALTER TABLE public.consultations DROP CONSTRAINT IF EXISTS consultations_status_check;
 ALTER TABLE public.consultations ADD CONSTRAINT consultations_status_check
-  CHECK (status IN ('active','ended','expired','refunded'));
+  CHECK (
+    status IN (
+      'pending',
+      'confirmed',
+      'reschedule_proposed',
+      'rejected',
+      'active',
+      'ended',
+      'expired',
+      'refunded'
+    )
+  );
 
 CREATE INDEX IF NOT EXISTS idx_consultations_user   ON public.consultations(user_id);
 CREATE INDEX IF NOT EXISTS idx_consultations_pandit ON public.consultations(pandit_id);

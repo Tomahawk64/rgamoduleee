@@ -1,261 +1,74 @@
-# Divine Pooja Services
+# Saral Pooja
 
-A production-ready Religious Services Marketplace + Live Consultation Platform built with **Flutter** (Android & iOS) and **Supabase** backend.
+Production-oriented Flutter Android app for pooja services with User, Pandit,
+and Admin roles. Razorpay checkout runs in the mobile app, while order creation
+and signature verification stay in Supabase Edge Functions.
 
----
+## Structure
 
-## Table of Contents
-
-1. [Features](#features)
-2. [Architecture](#architecture)
-3. [Prerequisites](#prerequisites)
-4. [Quick Start](#quick-start)
-5. [Project Structure](#project-structure)
-6. [Database Migrations](#database-migrations)
-7. [Deployment](#deployment)
-8. [Running Tests](#running-tests)
-9. [Environment Variables](#environment-variables)
-10. [Roadmap — Phase 2](#roadmap--phase-2)
-
----
-
-## Features
-
-| Feature | Status |
-|---|---|
-| User / Pandit / Admin role-based auth (Supabase Auth) | ✅ |
-| 5-tab navigation (Home / Poojas / Special Poojas / Shop / Account) | ✅ |
-| Booking wizard (7 steps, slot conflict prevention via advisory lock) | ✅ |
-| Video/photo proof upload (Supabase Storage) | ✅ |
-| Paid timed consultation chat (Realtime + countdown timer) | ✅ |
-| Special Poojas module (temple events, calendar availability) | ✅ |
-| Online shop (puja kits with cart & checkout) | ✅ |
-| Admin dashboard (stats, user management, booking oversight) | ✅ |
-| Pandit earnings dashboard | ✅ |
-| Payment abstraction (Mock in Phase 1, Razorpay in Phase 2) | ✅ |
-| In-app notifications for booking, payment, and consultation lifecycle events | ✅ |
-| Full RLS security on all tables | ✅ |
-| GitHub Actions CI (analyze → test → build) | ✅ |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────┐
-│              Flutter App                │
-│  ┌──────────┐  ┌───────────┐           │
-│  │ Riverpod │  │ go_router │           │
-│  │ Providers│  │ (5-tab)   │           │
-│  └────┬─────┘  └─────┬─────┘           │
-│       │ (Repository  │                 │
-│       │  Pattern)    │                 │
-└───────┼──────────────┼─────────────────┘
-        │              │
-   ┌────▼──────────────▼──────┐
-   │       Supabase            │
-   │ ┌──────┐ ┌──────────────┐│
-   │ │ Auth │ │  PostgREST   ││
-   │ └──────┘ └──────────────┘│
-   │ ┌──────┐ ┌──────────────┐│
-   │ │ RLS  │ │   Realtime   ││
-   │ └──────┘ └──────────────┘│
-   │ ┌──────┐ ┌──────────────┐│
-   │ │ RPCs │ │   Storage    ││
-   │ └──────┘ └──────────────┘│
-   └───────────────────────────┘
+```text
+android/              Android host project
+assets/images/        Bundled app imagery
+lib/main.dart         App entrypoint
+lib/src/core/         Runtime configuration
+lib/src/domain/       Domain models and enums
+lib/src/data/         Repository and service implementations
+lib/src/presentation/ Riverpod, routing, and screens
+supabase/migrations/  Clean schema, RLS, and seed data
+supabase/functions/   Razorpay, Cloudflare R2, and maintenance functions
+test/                 Focused app/domain tests
 ```
 
-**Repository Pattern:**
-Every data source has an abstract interface (`IBookingRepository`, `IPackageRepository`, etc.) with:
-- **Mock implementation** — in-memory, instant, for dev/testing
-- **Supabase implementation** — real DB, all queries respect RLS
+## Configuration
 
-Switch between them by overriding the provider:
-```dart
-// In tests or dev overrides:
-bookingRepositoryProvider.overrideWithValue(MockBookingRepository())
-```
-
----
-
-## Prerequisites
-
-| Tool | Version |
-|---|---|
-| Flutter SDK | ≥ 3.22.0 |
-| Dart SDK | ≥ 3.4.0 |
-| Supabase project | Any |
-| Node.js (backend only) | ≥ 20 |
-| Docker + Compose | Optional (local stack) |
-
----
-
-## Quick Start
-
-### 1 — Clone and install dependencies
+Pass secrets and backend config with `--dart-define`; do not commit secrets.
 
 ```bash
-git clone https://github.com/your-org/divine-pooja-services.git
-cd divine-pooja-services
-flutter pub get
+flutter run \
+  --dart-define=SUPABASE_URL=https://your-project.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=your-anon-key \
+  --dart-define=RAZORPAY_KEY_ID=rzp_live_or_test_key \
+  --dart-define=CLOUDFLARE_UPLOAD_FUNCTION=cloudflare-r2-upload-url
 ```
 
-### 2 — Configure environment
+If Supabase env values are omitted, the app runs against the in-memory demo
+repository for local UI/testing.
+
+## Supabase
+
+Apply migrations:
 
 ```bash
-cp .env.example .env
-# Edit .env with your Supabase project URL and anon key
-```
-
-### 3 — Run database migrations
-
-```bash
-# Using Supabase CLI (recommended):
 supabase db push
-
-# Or run manually in the Supabase SQL Editor in this order:
-#   supabase/migrations/001_initial_schema.sql
-#   supabase/migrations/002_rls_policies.sql
-#   supabase/migrations/003_rpc_functions.sql
-#   ...then all later numbered migrations, including 009_allow_special_pooja_bookings.sql
 ```
 
-### 4 — Run the app
+Deploy functions:
 
 ```bash
-flutter run
+supabase functions deploy create-razorpay-order
+supabase functions deploy verify-razorpay-payment-v2
+supabase functions deploy cloudflare-r2-upload-url
+supabase functions deploy run-scheduled-maintenance
 ```
 
----
+Required function secrets:
 
-## Project Structure
-
-```
-lib/
-├── main.dart
-├── core/
-│   ├── config/          # AppConfig (env keys)
-│   ├── providers/       # supabaseClientProvider
-│   ├── router/          # app_router.dart (5-tab StatefulShellRoute)
-│   └── theme/           # AppColors, AppTheme
-├── auth/                # Supabase Auth + UserModel + providers
-├── booking/             # 7-step wizard, MockBookingRepository, SupabaseBookingRepository
-├── consultation/        # Session model, MockSessionRepository, WsSessionRepository
-├── packages/            # Package list/filter, SupabasePackageRepository
-├── special_poojas/      # Temple poojas module (calendar, booking)
-├── shop/                # Product list, cart, SupabaseShopRepository
-├── payment/             # IPaymentService, MockPaymentService
-├── pandit/              # Pandit detail + proof upload
-├── admin/               # Admin screens (stats, assignment, oversight)
-├── account/             # Role-adaptive account tab (user/pandit/admin/unauth)
-├── home/                # Home screen, hero slider, categories
-└── widgets/             # Shared: LoadingShimmer, etc.
-
-supabase/
-└── migrations/
-    ├── 001_initial_schema.sql   # All 13 tables
-    ├── 002_rls_policies.sql     # Row Level Security
-    └── 003_rpc_functions.sql    # Booking/consultation RPCs
-
-test/
-├── booking/booking_wizard_test.dart
-├── payment/payment_service_test.dart
-├── consultation/session_repository_test.dart
-└── special_poojas/special_poojas_filter_test.dart
+```text
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+SUPABASE_SERVICE_ROLE_KEY
+R2_ACCOUNT_ID
+R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY
+R2_BUCKET
+R2_PUBLIC_BASE_URL optional
+MAINTENANCE_TOKEN for scheduled maintenance calls
 ```
 
----
-
-## Database Migrations
-
-| File | Contents |
-|---|---|
-| `001_initial_schema.sql` | 13 tables: profiles, pandit_details, packages, special_poojas, bookings, booking_proofs, consultations, messages, consultation_rates, transactions, addresses, products, orders, package_reviews |
-| `002_rls_policies.sql` | RLS on all tables. `get_my_role()` SECURITY DEFINER prevents recursion |
-| `003_rpc_functions.sql` | `create_booking` (advisory lock), `get_booked_slots`, `update_booking_status`, `assign_pandit_to_booking`, `start/end_consultation_session`, `get_admin_stats`, `get_pandit_earnings` |
-| `009_allow_special_pooja_bookings.sql` | Makes `bookings.package_id` nullable so special-pooja bookings can use `special_pooja_id` without a regular package row |
-| `010_create_booking_payment_fields.sql` | Extends `create_booking` RPC to atomically store `is_paid` and `payment_id`, preventing client-side RLS update failures |
-| `011_consultation_scheduling_and_chat_media.sql` | Adds scheduled consultation lifecycle (`pending`, `confirmed`, `reschedule_proposed`, `rejected`) RPCs and enables chat image attachments via `messages.image_url` + storage bucket policies |
-| `012_notifications_and_profile_media.sql` | Adds in-app notifications, notification RLS/RPC helpers, and the public `profile-images` bucket used by profile avatar uploads |
-
-### Key design decisions
-
-- **Slot conflict prevention:** `pg_advisory_xact_lock` in `create_booking` + partial unique index `(package_id, booking_date, slot_id) WHERE status != 'cancelled'`
-- **RLS without recursion:** `get_my_role()` is `SECURITY DEFINER` — reads `profiles` as function owner
-- **Role-authoritative transitions:** `update_booking_status` RPC validates state moves per role
-
----
-
-## Deployment
-
-### Android
+## Verify
 
 ```bash
-flutter build apk --release --split-per-abi
-flutter build appbundle --release   # for Play Store
-```
-
-### iOS
-
-```bash
-flutter build ios --release
-# Open Xcode → Product → Archive → Distribute App
-```
-
-### Backend (Docker)
-
-```bash
-docker compose up -d
-docker compose logs -f ws-server
-docker compose down
-```
-
-### Supabase (Production)
-
-1. Create project at [supabase.com](https://supabase.com)
-2. Run migrations: `supabase db push`
-3. Enable Email + OTP auth providers
-4. Create Storage buckets: `booking-proofs` (private), `consultation-chat-media` (public), `profile-images` (public)
-5. Update `.env` with production keys
-
----
-
-## Running Tests
-
-```bash
-# All tests
+flutter analyze
 flutter test
-
-# Single suite
-flutter test test/booking/booking_wizard_test.dart
-
-# With coverage
-flutter test --coverage
+flutter build apk --debug
 ```
-
----
-
-## Environment Variables
-
-See [.env.example](.env.example) for all required variables.
-
-| Variable | Required | Description |
-|---|---|---|
-| `SUPABASE_URL` | ✅ | Supabase project URL |
-| `SUPABASE_ANON_KEY` | ✅ | Public anon key (Flutter app) |
-| `SUPABASE_SERVICE_ROLE_KEY` | ⚠️ Server side only | Never put in Flutter app |
-| `REDIS_URL` | Backend only | For consultation session timers |
-| `RAZORPAY_KEY_ID` | Phase 2 | Payment integration |
-
----
-
-## Roadmap — Phase 2
-
-- [ ] Razorpay payment integration
-- [ ] FCM push notifications (booking status, consultation requests)
-- [ ] Hive offline cache for packages and pandit list
-- [ ] Video consultation (Agora SDK)
-- [ ] Multi-language (Hindi / Tamil / Telugu)
-- [ ] k6 load testing scripts (10k concurrent users)
-- [ ] Astrological chart / Kundali generation

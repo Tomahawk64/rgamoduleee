@@ -3,5 +3,26 @@
     // Hover to view descriptions of existing attributes.
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": []
+    "configurations": [
+        {
+            "name": "rg_amodule-main",
+            "cwd": "rg_amodule-main",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "rg_amodule-main (profile mode)",
+            "cwd": "rg_amodule-main",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "rg_amodule-main (release mode)",
+            "cwd": "rg_amodule-main",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
 }

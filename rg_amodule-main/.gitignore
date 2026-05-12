@@ -33,6 +33,10 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local environment files
+.env
+.env.local
+
 # Supabase local CLI cache
 supabase/.temp/
 

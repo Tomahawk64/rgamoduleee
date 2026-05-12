@@ -16,6 +16,7 @@ Future<void> main() async {
       'CLOUDFLARE_UPLOAD_FUNCTION',
       defaultValue: 'cloudflare-r2-upload-url',
     ),
+    clientDemoAccess: bool.fromEnvironment('CLIENT_DEMO_ACCESS'),
   );
 
   if (config.hasSupabase) {

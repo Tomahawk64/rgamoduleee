@@ -16,6 +16,13 @@ final appConfigProvider = Provider<AppConfig>(
 
 final repositoryProvider = Provider<AppRepository>((ref) {
   final config = ref.watch(appConfigProvider);
+  if (config.clientDemoAccess) {
+    return InMemoryAppRepository(
+      paymentService: RazorpayPaymentGateway(config),
+      mediaStorage: CloudflareR2MediaStorage(config: config),
+      clientDemoAccess: true,
+    );
+  }
   final hasSupabaseClient = config.hasSupabase;
   if (hasSupabaseClient) {
     final client = Supabase.instance.client;

@@ -86,6 +86,7 @@ class InMemoryAppRepository implements AppRepository {
   InMemoryAppRepository({
     required PaymentService paymentService,
     required MediaStorageService mediaStorage,
+    this.clientDemoAccess = false,
   }) : _paymentService = paymentService,
        _mediaStorage = mediaStorage {
     _seed();
@@ -93,6 +94,7 @@ class InMemoryAppRepository implements AppRepository {
 
   final PaymentService _paymentService;
   final MediaStorageService _mediaStorage;
+  final bool clientDemoAccess;
   final _bookingController = StreamController<List<Booking>>.broadcast();
   final _chatControllers = <String, StreamController<List<ChatMessage>>>{};
   final _users = <AppUser>[];
@@ -119,24 +121,24 @@ class InMemoryAppRepository implements AppRepository {
     _users.addAll(const [
       AppUser(
         id: 'u1',
-        name: 'Aarav Sharma',
-        email: 'user@saralpooja.app',
+        name: 'Client User',
+        email: 'client.user@saralpooja.app',
         role: UserRole.user,
-        phone: '+919999999991',
+        phone: '+919999999981',
       ),
       AppUser(
         id: 'p1',
-        name: 'Pt. Dev Mishra',
-        email: 'pandit@saralpooja.app',
+        name: 'Pt. Client Demo',
+        email: 'client.pandit@saralpooja.app',
         role: UserRole.pandit,
-        phone: '+919999999992',
+        phone: '+919999999982',
       ),
       AppUser(
         id: 'a1',
-        name: 'Admin',
-        email: 'admin@saralpooja.app',
+        name: 'Client Admin',
+        email: 'client.admin@saralpooja.app',
         role: UserRole.admin,
-        phone: '+919999999993',
+        phone: '+919999999983',
       ),
     ]);
     _currentUser = _users.first;
@@ -339,6 +341,21 @@ class InMemoryAppRepository implements AppRepository {
     required String email,
     required String password,
   }) async {
+    if (clientDemoAccess) {
+      final normalizedEmail = email.trim().toLowerCase();
+      if (password != 'Saral@Client2026' ||
+          !_users.any((user) => user.email == normalizedEmail)) {
+        throw const AppException('Invalid client demo credentials.');
+      }
+      _currentUser = _users.firstWhere((user) => user.email == normalizedEmail);
+      _authenticated = true;
+      _wallets.putIfAbsent(
+        _currentUser.id,
+        () => _currentUser.role == UserRole.user ? 25000 : 0,
+      );
+      _emitBookings();
+      return _currentUser;
+    }
     final role = email.contains('admin')
         ? UserRole.admin
         : email.contains('pandit')

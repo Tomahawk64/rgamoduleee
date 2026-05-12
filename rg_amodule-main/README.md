@@ -23,11 +23,35 @@ test/                 Focused app/domain tests
 
 Pass secrets and backend config with `--dart-define`; do not commit secrets.
 
+For local development, copy `.env.example` to `.env` and fill in the Supabase
+values. Then use the helper scripts below, which pass those values to Flutter as
+compile-time defines.
+
+```powershell
+.\scripts\run_supabase_android.ps1
+.\scripts\build_supabase_apk.ps1
+.\scripts\setup_client_demo_accounts.ps1
+```
+
+`setup_client_demo_accounts.ps1` requires `SUPABASE_SERVICE_ROLE_KEY` in `.env`.
+Use it only locally; never ship or commit the service role key.
+
+For a client-review APK, set `CLIENT_DEMO_ACCESS=true` in `.env`. The APK will
+still initialize Supabase and include only the public Razorpay key id, but login
+uses the seeded review accounts below so all roles are available immediately:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| User | `client.user@saralpooja.app` | `Saral@Client2026` |
+| Pandit | `client.pandit@saralpooja.app` | `Saral@Client2026` |
+| Admin | `client.admin@saralpooja.app` | `Saral@Client2026` |
+
 ```bash
 flutter run \
   --dart-define=SUPABASE_URL=https://your-project.supabase.co \
   --dart-define=SUPABASE_ANON_KEY=your-anon-key \
   --dart-define=RAZORPAY_KEY_ID=rzp_live_or_test_key \
+  --dart-define=CLIENT_DEMO_ACCESS=true \
   --dart-define=CLOUDFLARE_UPLOAD_FUNCTION=cloudflare-r2-upload-url
 ```
 

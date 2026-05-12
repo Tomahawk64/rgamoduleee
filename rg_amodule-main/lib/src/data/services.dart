@@ -128,6 +128,20 @@ class RazorpayPaymentGateway implements PaymentService {
       return completer.future.whenComplete(checkout.clear);
     }
     if (method == PaymentMethod.razorpay) {
+      if (config.clientDemoAccess) {
+        return PaymentRecord(
+          id: 'demo_rzp_${DateTime.now().microsecondsSinceEpoch}',
+          userId: userId,
+          amount: amount,
+          method: method,
+          status: 'captured',
+          createdAt: DateTime.now(),
+          referenceId: referenceId,
+          providerOrderId: 'order_demo_${DateTime.now().microsecondsSinceEpoch}',
+          providerPaymentId: 'pay_demo_${DateTime.now().microsecondsSinceEpoch}',
+          providerSignature: 'client_demo_signature',
+        );
+      }
       throw const AppException('Supabase is required for Razorpay payments.');
     }
     if (method == PaymentMethod.wallet) {

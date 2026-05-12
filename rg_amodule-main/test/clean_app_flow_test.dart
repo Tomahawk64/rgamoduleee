@@ -96,6 +96,40 @@ void main() {
     expect(repository.ledgerFor('u1'), isEmpty);
   });
 
+  test('client demo credentials map to the three review roles', () async {
+    final demoRepository = InMemoryAppRepository(
+      paymentService: _FakePaymentService(),
+      mediaStorage: _FakeMediaStorage(),
+      clientDemoAccess: true,
+    );
+
+    final user = await demoRepository.signIn(
+      email: 'client.user@saralpooja.app',
+      password: 'Saral@Client2026',
+    );
+    expect(user.role, UserRole.user);
+
+    final pandit = await demoRepository.signIn(
+      email: 'client.pandit@saralpooja.app',
+      password: 'Saral@Client2026',
+    );
+    expect(pandit.role, UserRole.pandit);
+
+    final admin = await demoRepository.signIn(
+      email: 'client.admin@saralpooja.app',
+      password: 'Saral@Client2026',
+    );
+    expect(admin.role, UserRole.admin);
+
+    expect(
+      demoRepository.signIn(
+        email: 'client.admin@saralpooja.app',
+        password: 'wrong-password',
+      ),
+      throwsA(isA<AppException>()),
+    );
+  });
+
   test('cart checkout creates order and clears persistent cart', () async {
     await repository.signInAs(UserRole.user);
     await repository.addToCart('sh1', 2);

@@ -4,6 +4,7 @@ class AppConfig {
     required this.supabaseAnonKey,
     required this.razorpayKeyId,
     required this.cloudflareUploadFunction,
+    required this.clientDemoAccess,
   });
 
   factory AppConfig.fromEnvironment() {
@@ -15,6 +16,7 @@ class AppConfig {
         'CLOUDFLARE_UPLOAD_FUNCTION',
         defaultValue: 'cloudflare-r2-upload-url',
       ),
+      clientDemoAccess: bool.fromEnvironment('CLIENT_DEMO_ACCESS'),
     );
   }
 
@@ -22,6 +24,7 @@ class AppConfig {
   final String supabaseAnonKey;
   final String razorpayKeyId;
   final String cloudflareUploadFunction;
+  final bool clientDemoAccess;
 
   bool get hasSupabase => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
   bool get hasRazorpay => razorpayKeyId.startsWith('rzp_');
